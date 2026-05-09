@@ -3,10 +3,13 @@ package main
 import (
 	"os"
 	"testing"
+	"vc/commands"
 	workdir "vc/workdir"
 )
 
 var wd *workdir.WorkDir
+
+var vc *commands.VC
 
 func TestMain(m *testing.M) {
 	Setup()
@@ -47,4 +50,5 @@ func Setup() {
 		panic(err)
 	}
 
+	vc = commands.Init(wd.Clone())
 }
