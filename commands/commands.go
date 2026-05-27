@@ -7,6 +7,8 @@ import (
 	"os"
 	"io"	
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 type Commit struct {
@@ -229,4 +231,80 @@ func (vc *VC) Log() []string {
         commitsMessages[i], commitsMessages[j] = commitsMessages[j], commitsMessages[i]
     }
 	return commitsMessages
+}
+
+func (vc *VC) parseCommitRef(commitRef string) (int, error) {
+    if strings.HasPrefix(commitRef, "~") {
+        offset, err := strconv.Atoi(commitRef[1:])
+        if err != nil {
+            return 0, err
+        }
+        commitIndex := len(vc.Commits) - 1 - offset
+        return commitIndex, nil
+    } else if strings.HasPrefix(commitRef, "^") {
+        offset := len(commitRef) 
+        commitIndex := len(vc.Commits) - offset -1
+        if commitIndex < 0 {
+            return 0, fmt.Errorf("commit reference out of range")
+        }
+        return commitIndex, nil
+    }
+    return 0, fmt.Errorf("invalid commit reference")
+}
+
+func (vc *VC) clearCurrentState() error {
+    // This function assumes you might want to clear out all current files, adjust as necessary
+    err := filepath.Walk(vc.WorkDir.Path, func(path string, info os.FileInfo, err error) error {
+        if err != nil {
+            return err
+        }
+        if !info.IsDir() {
+            return os.Remove(path)
+        }
+        return nil
+    })
+
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (vc *VC) revertToCommit(commitIndex int) error {
+    if commitIndex < 0 || commitIndex >= len(vc.Commits) {
+        return fmt.Errorf("invalid commit index")
+    }
+
+    commit := vc.Commits[commitIndex]
+
+    // Clear current working directory state before reverting
+    err := vc.clearCurrentState()
+    if err != nil {
+        return fmt.Errorf("error clearing current state: %v", err)
+    }
+
+    // Revert all files to their state at the commit
+    for path, content := range commit.FileSnap {
+        fullPath := filepath.Join(vc.WorkDir.Path, path)
+        err := os.WriteFile(fullPath, []byte(content), 0644)
+        if err != nil {
+            return fmt.Errorf("error writing file %s: %v", fullPath, err)
+        }
+    }
+
+    return nil
+}
+
+
+func (vc *VC) Checkout(commitRef string) (*workdir.WorkDir, error) {
+    commitIndex, err := vc.parseCommitRef(commitRef)
+    if err != nil {
+        return nil, err
+    }
+
+    err = vc.revertToCommit(commitIndex)
+    if err != nil {
+        return nil, err
+    }
+    return vc.WorkDir.Clone(), nil
 }

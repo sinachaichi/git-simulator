@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 	"vc/commands"
+	"vc/workdir"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -102,4 +103,92 @@ func TestLog2(t *testing.T) {
 		[]string{},
 		vc.Log(),
 	)
+}
+
+func addCommits(wd *workdir.WorkDir) *commands.VC {
+	vc = commands.Init(wd.Clone())
+	vc.AddAll()
+	vc.Commit("initial commit")
+
+	vc.GetWorkDir().AppendToFile("src/main.go", "func main(){}")
+	vc.AddAll()
+	vc.Commit("feat(main)")
+
+	vc.GetWorkDir().AppendToFile("src/main.go", "\n// modification1\n")
+	vc.GetWorkDir().AppendToFile("src/workdir/file1.go", "\n// another modification1\n")
+	vc.GetWorkDir().AppendToFile("src/workdir/file2.go", "\n// yet another modification1\n")
+	vc.Add("src/main.go", "src/workdir/file1.go")
+	vc.Add("src/main.go", "src/workdir/file2.go")
+	vc.Commit("modifications 1")
+
+	vc.GetWorkDir().AppendToFile("src/main.go", "\n// modification2\n")
+	vc.GetWorkDir().AppendToFile("src/workdir/file1.go", "\n// another modification2\n")
+	vc.GetWorkDir().AppendToFile("src/workdir/file2.go", "\n// yet another modification2\n")
+	vc.Add("src/main.go", "src/workdir/file1.go", "src/workdir/file2.go")
+	vc.Commit("modifications 2")
+
+	return vc
+}
+
+func TestCheckout1(t *testing.T) {
+	vc := addCommits(wd.Clone())
+	{
+		wdC, err := vc.Checkout("~1")
+		assert.NoError(t, err)
+		content, err := wdC.CatFile("src/main.go")
+		assert.NoError(t, err)
+		assert.Contains(t, content, "func main(){}")
+		assert.Contains(t, content, "modification1")
+		assert.NotContains(t, content, "modification2")
+	}
+
+	{
+		wdC, err := vc.Checkout("~2")
+		assert.NoError(t, err)
+		content, err := wdC.CatFile("src/main.go")
+		assert.NoError(t, err)
+		assert.Contains(t, content, "func main(){}")
+		assert.NotContains(t, content, "modification1")
+		assert.NotContains(t, content, "modification2")
+	}
+	{
+		wdC, err := vc.Checkout("~3")
+		assert.NoError(t, err)
+		content, err := wdC.CatFile("src/main.go")
+		assert.NoError(t, err)
+		assert.NotContains(t, content, "func main(){}")
+		assert.NotContains(t, content, "modification1")
+		assert.NotContains(t, content, "modification2")
+	}
+}
+func TestCheckout2(t *testing.T) {
+	vc := addCommits(wd.Clone())
+	{
+		wdC, err := vc.Checkout("^")
+		assert.NoError(t, err)
+		content, err := wdC.CatFile("src/main.go")
+		assert.NoError(t, err)
+		assert.Contains(t, content, "func main(){}")
+		assert.Contains(t, content, "modification1")
+		assert.NotContains(t, content, "modification2")
+	}
+
+	{
+		wdC, err := vc.Checkout("^^")
+		assert.NoError(t, err)
+		content, err := wdC.CatFile("src/main.go")
+		assert.NoError(t, err)
+		assert.Contains(t, content, "func main(){}")
+		assert.NotContains(t, content, "modification1")
+		assert.NotContains(t, content, "modification2")
+	}
+	{
+		wdC, err := vc.Checkout("^^^")
+		assert.NoError(t, err)
+		content, err := wdC.CatFile("src/main.go")
+		assert.NoError(t, err)
+		assert.NotContains(t, content, "func main(){}")
+		assert.NotContains(t, content, "modification1")
+		assert.NotContains(t, content, "modification2")
+	}
 }
