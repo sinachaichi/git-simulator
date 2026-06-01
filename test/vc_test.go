@@ -2,8 +2,8 @@ package main
 
 import (
 	"testing"
-	"vc/commands"
-	"vc/workdir"
+	"github.com/sinachaichi/git-simulator/commands"
+	"github.com/sinachaichi/git-simulator/workdir"
 
 	"github.com/stretchr/testify/assert"
 )

@@ -1,6 +1,6 @@
-module vc
+module github.com/sinachaichi/git-simulator
 
-go 1.19
+go 1.22
 
 require (
 	github.com/otiai10/copy v1.11.0

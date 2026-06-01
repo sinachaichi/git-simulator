@@ -3,7 +3,7 @@ package commands
 import (
 	"crypto/sha1"
 	"fmt"
-	"vc/workdir"
+	"github.com/sinachaichi/git-simulator/workdir"
 	"os"
 	"io"	
 	"path/filepath"

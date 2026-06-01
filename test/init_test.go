@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 	"testing"
-	"vc/commands"
-	workdir "vc/workdir"
+	"github.com/sinachaichi/git-simulator/commands"
+	workdir "github.com/sinachaichi/git-simulator/workdir"
 )
 
 var wd *workdir.WorkDir
