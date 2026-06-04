@@ -85,11 +85,8 @@ func (w *WorkDir) AppendFile(rel string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
+	_, err = f.Write(data)
+	return errors.Join(err, f.Close())
 }
 
 // Remove deletes a file and any parent directories left empty.
