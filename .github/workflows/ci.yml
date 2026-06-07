@@ -31,3 +31,17 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
         with:
           version: v2.1
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: check coverage
+        run: |
+          go test -coverprofile=coverage.out ./...
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print int($3)}')
+          echo "total coverage: ${total}%"
+          test "$total" -ge 80
