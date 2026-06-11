@@ -117,3 +117,21 @@ func TestResolveAmbiguous(t *testing.T) {
 	}
 	t.Fatal("no collision found")
 }
+
+func TestTypedReaders(t *testing.T) {
+	s := newStore(t)
+	blobID, _, _ := s.Write(&objects.Blob{Data: []byte("x")})
+	treeID, _, _ := s.Write(&objects.Tree{})
+
+	_, err := s.ReadBlob(blobID)
+	assert.NoError(t, err)
+	_, err = s.ReadTree(treeID)
+	assert.NoError(t, err)
+
+	_, err = s.ReadTree(blobID)
+	assert.ErrorContains(t, err, "is a blob, not a tree")
+	_, err = s.ReadCommit(treeID)
+	assert.ErrorContains(t, err, "is a tree, not a commit")
+	_, err = s.ReadBlob(treeID)
+	assert.ErrorContains(t, err, "is a tree, not a blob")
+}

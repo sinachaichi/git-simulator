@@ -177,3 +177,46 @@ func isHex(s string) bool {
 	}
 	return true
 }
+
+// ReadBlob reads an object and checks that it is a blob.
+func (s *Store) ReadBlob(id objects.ID) (*objects.Blob, error) {
+	o, err := s.Read(id)
+	if err != nil {
+		return nil, err
+	}
+	b, ok := o.(*objects.Blob)
+	if !ok {
+		return nil, wrongType(id, objects.TypeBlob, o)
+	}
+	return b, nil
+}
+
+// ReadTree reads an object and checks that it is a tree.
+func (s *Store) ReadTree(id objects.ID) (*objects.Tree, error) {
+	o, err := s.Read(id)
+	if err != nil {
+		return nil, err
+	}
+	t, ok := o.(*objects.Tree)
+	if !ok {
+		return nil, wrongType(id, objects.TypeTree, o)
+	}
+	return t, nil
+}
+
+// ReadCommit reads an object and checks that it is a commit.
+func (s *Store) ReadCommit(id objects.ID) (*objects.Commit, error) {
+	o, err := s.Read(id)
+	if err != nil {
+		return nil, err
+	}
+	c, ok := o.(*objects.Commit)
+	if !ok {
+		return nil, wrongType(id, objects.TypeCommit, o)
+	}
+	return c, nil
+}
+
+func wrongType(id objects.ID, want objects.Type, got objects.Object) error {
+	return fmt.Errorf("object %s is a %s, not a %s", id.Short(), got.Type(), want)
+}
