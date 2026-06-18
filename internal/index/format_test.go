@@ -91,3 +91,10 @@ func TestRealGitReadsOurIndex(t *testing.T) {
 	assert.Equal(t, "100755 "+blob("bb").String()+" 0\tsrc/main.go", lines[1])
 	assert.Contains(t, lines[2], "src/very/long/path/that/is/not/aligned.txt")
 }
+
+func TestZeroMTimeRoundTrips(t *testing.T) {
+	in := []index.Entry{{Path: "a", Mode: objects.ModeFile, ID: blob("a")}}
+	got, err := index.Unmarshal(index.Marshal(in))
+	require.NoError(t, err)
+	assert.True(t, got[0].MTime.IsZero())
+}

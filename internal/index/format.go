@@ -39,7 +39,10 @@ func Marshal(entries []Entry) []byte {
 	put32(&buf, uint32(len(entries)))
 	for _, e := range entries {
 		start := buf.Len()
-		sec, nsec := uint32(e.MTime.Unix()), uint32(e.MTime.Nanosecond())
+		var sec, nsec uint32
+		if !e.MTime.IsZero() {
+			sec, nsec = uint32(e.MTime.Unix()), uint32(e.MTime.Nanosecond())
+		}
 		put32(&buf, sec) // ctime, we do not track it separately
 		put32(&buf, nsec)
 		put32(&buf, sec)
@@ -96,9 +99,11 @@ func Unmarshal(data []byte) ([]Entry, error) {
 			return nil, errors.New("index is truncated")
 		}
 		e := Entry{
-			MTime: time.Unix(int64(binary.BigEndian.Uint32(rest[8:12])), int64(binary.BigEndian.Uint32(rest[12:16]))),
-			Mode:  binary.BigEndian.Uint32(rest[24:28]),
-			Size:  binary.BigEndian.Uint32(rest[36:40]),
+			Mode: binary.BigEndian.Uint32(rest[24:28]),
+			Size: binary.BigEndian.Uint32(rest[36:40]),
+		}
+		if sec, nsec := binary.BigEndian.Uint32(rest[8:12]), binary.BigEndian.Uint32(rest[12:16]); sec != 0 || nsec != 0 {
+			e.MTime = time.Unix(int64(sec), int64(nsec))
 		}
 		copy(e.ID[:], rest[40:60])
 		flags := binary.BigEndian.Uint16(rest[60:62])
