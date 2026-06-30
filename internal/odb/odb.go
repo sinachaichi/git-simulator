@@ -220,3 +220,23 @@ func (s *Store) ReadCommit(id objects.ID) (*objects.Commit, error) {
 func wrongType(id objects.ID, want objects.Type, got objects.Object) error {
 	return fmt.Errorf("object %s is a %s, not a %s", id.Short(), got.Type(), want)
 }
+
+// Abbrev returns the shortest unique prefix of id that is at least min
+// characters long.
+func (s *Store) Abbrev(id objects.ID, minLen int) (string, error) {
+	ids, err := s.All()
+	if err != nil {
+		return "", err
+	}
+	full := id.String()
+	n := minLen
+	for _, other := range ids {
+		if other == id {
+			continue
+		}
+		for n < len(full) && strings.HasPrefix(other.String(), full[:n]) {
+			n++
+		}
+	}
+	return full[:n], nil
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -134,4 +135,33 @@ func TestTypedReaders(t *testing.T) {
 	assert.ErrorContains(t, err, "is a tree, not a commit")
 	_, err = s.ReadBlob(treeID)
 	assert.ErrorContains(t, err, "is a tree, not a blob")
+}
+
+func TestAbbrevGrowsUntilUnique(t *testing.T) {
+	s := newStore(t)
+	// With a minimum of 2 characters a collision shows up after a few
+	// hundred objects.
+	seen := map[string]objects.ID{}
+	for i := 0; i < 5000; i++ {
+		id, _, err := s.Write(&objects.Blob{Data: []byte{byte(i), byte(i >> 8)}})
+		require.NoError(t, err)
+		if other, ok := seen[id.String()[:2]]; ok {
+			short, err := s.Abbrev(id, 2)
+			require.NoError(t, err)
+			assert.Greater(t, len(short), 2)
+			assert.True(t, strings.HasPrefix(id.String(), short))
+			assert.False(t, strings.HasPrefix(other.String(), short))
+			return
+		}
+		seen[id.String()[:2]] = id
+	}
+	t.Fatal("no collision found")
+}
+
+func TestAbbrevUsesMinimumWhenUnique(t *testing.T) {
+	s := newStore(t)
+	id, _, _ := s.Write(&objects.Blob{Data: []byte("only")})
+	short, err := s.Abbrev(id, 7)
+	require.NoError(t, err)
+	assert.Equal(t, id.String()[:7], short)
 }
