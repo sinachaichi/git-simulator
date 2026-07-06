@@ -104,24 +104,43 @@ func matches(spec, path string) bool {
 	return spec == "." || path == spec || strings.HasPrefix(path, spec+"/")
 }
 
-// stageFile writes the blob for a working tree file and returns the
-// index entry for it.
-func stageFile(r *repo.Repo, path string) (index.Entry, error) {
+// readWorkFile reads a working tree file once and returns its content
+// with the index entry it would get.
+func readWorkFile(r *repo.Repo, path string) (index.Entry, []byte, error) {
 	data, err := r.Work.ReadFile(path)
 	if err != nil {
-		return index.Entry{}, err
+		return index.Entry{}, nil, err
 	}
 	info, err := r.Work.Stat(path)
 	if err != nil {
-		return index.Entry{}, err
-	}
-	id, _, err := r.ODB.Write(&objects.Blob{Data: data})
-	if err != nil {
-		return index.Entry{}, err
+		return index.Entry{}, nil, err
 	}
 	mode := objects.ModeFile
 	if info.Mode()&0o111 != 0 {
 		mode = objects.ModeExecutable
 	}
-	return index.Entry{Path: path, Mode: mode, ID: id, Size: uint32(len(data)), MTime: info.ModTime()}, nil
+	return index.Entry{
+		Path: path, Mode: mode, Size: uint32(len(data)), MTime: info.ModTime(),
+		ID: objects.HashOf(&objects.Blob{Data: data}),
+	}, data, nil
+}
+
+// hashWorkFile computes the entry for a file without storing anything.
+// Status uses it to compare against the index.
+func hashWorkFile(r *repo.Repo, path string) (index.Entry, error) {
+	entry, _, err := readWorkFile(r, path)
+	return entry, err
+}
+
+// stageFile writes the blob for a working tree file and returns the
+// index entry for it.
+func stageFile(r *repo.Repo, path string) (index.Entry, error) {
+	entry, data, err := readWorkFile(r, path)
+	if err != nil {
+		return index.Entry{}, err
+	}
+	if _, _, err := r.ODB.Write(&objects.Blob{Data: data}); err != nil {
+		return index.Entry{}, err
+	}
+	return entry, nil
 }
