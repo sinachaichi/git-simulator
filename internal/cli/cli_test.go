@@ -1,0 +1,229 @@
+package cli_test
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/sinachaichi/git-simulator/internal/cli"
+)
+
+// session runs commands the way a user would, in one directory.
+type session struct {
+	t   *testing.T
+	dir string
+}
+
+func newSession(t *testing.T) *session {
+	t.Helper()
+	t.Setenv("GIT_AUTHOR_NAME", "Ada Lovelace")
+	t.Setenv("GIT_AUTHOR_EMAIL", "ada@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Ada Lovelace")
+	t.Setenv("GIT_COMMITTER_EMAIL", "ada@example.com")
+	t.Setenv("GIT_AUTHOR_DATE", "1700000000 +0100")
+	t.Setenv("GIT_COMMITTER_DATE", "1700000000 +0100")
+	t.Setenv("NO_COLOR", "1")
+	return &session{t: t, dir: t.TempDir()}
+}
+
+func (s *session) run(args ...string) (stdout, stderr string, code int) {
+	s.t.Helper()
+	var out, errBuf bytes.Buffer
+	env := cli.Env{Stdin: strings.NewReader(""), Stdout: &out, Stderr: &errBuf, Cwd: s.dir}
+	code = cli.Run(args, env, "test")
+	return out.String(), errBuf.String(), code
+}
+
+func (s *session) ok(args ...string) string {
+	s.t.Helper()
+	out, errOut, code := s.run(args...)
+	require.Equal(s.t, 0, code, "hood %s\nstderr: %s", strings.Join(args, " "), errOut)
+	return out
+}
+
+func (s *session) write(name, content string) {
+	s.t.Helper()
+	p := filepath.Join(s.dir, name)
+	require.NoError(s.t, os.MkdirAll(filepath.Dir(p), 0o755))
+	require.NoError(s.t, os.WriteFile(p, []byte(content), 0o644))
+}
+
+func TestVersionAndHelp(t *testing.T) {
+	s := newSession(t)
+	assert.Equal(t, "hood test\n", s.ok("--version"))
+	out := s.ok("--help")
+	assert.Contains(t, out, "usage: hood")
+	assert.Contains(t, out, "commit")
+	assert.Equal(t, out, s.ok())
+}
+
+func TestUnknownCommandAndOption(t *testing.T) {
+	s := newSession(t)
+	_, errOut, code := s.run("frobnicate")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, `"frobnicate" is not a command`)
+	_, errOut, code = s.run("--bogus")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "unknown option --bogus")
+}
+
+func TestCommandsOutsideARepo(t *testing.T) {
+	s := newSession(t)
+	_, errOut, code := s.run("status")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "not inside a hood repository")
+}
+
+func TestFirstCommitSession(t *testing.T) {
+	s := newSession(t)
+	out := s.ok("init")
+	assert.Contains(t, out, "Initialized empty hood repository in")
+
+	assert.Equal(t, "On branch main\n\nNo commits yet\n\nnothing to commit (create/copy files and use \"add\" to track)\n", s.ok("status"))
+
+	s.write("hello.txt", "hello\n")
+	out = s.ok("status")
+	assert.Contains(t, out, "Untracked files:")
+	assert.Contains(t, out, "\thello.txt")
+	assert.Contains(t, out, "nothing added to commit but untracked files present")
+
+	s.ok("add", "hello.txt")
+	out = s.ok("status")
+	assert.Contains(t, out, "Changes to be committed:")
+	assert.Contains(t, out, "\tnew file:   hello.txt")
+
+	out = s.ok("commit", "-m", "first commit")
+	assert.Regexp(t, `^\[main \(root-commit\) [0-9a-f]{7}\] first commit\n$`, out)
+	assert.Equal(t, "On branch main\nnothing to commit, working tree clean\n", s.ok("status"))
+}
+
+func TestLogOutput(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+	s.write("a", "2")
+	s.ok("commit", "-am", "two")
+
+	out := s.ok("log")
+	assert.Contains(t, out, "(HEAD -> main)")
+	assert.Contains(t, out, "Author: Ada Lovelace <ada@example.com>")
+	assert.Contains(t, out, "Date:   Tue Nov 14 23:13:20 2023 +0100")
+	assert.Contains(t, out, "    two\n")
+	assert.Less(t, strings.Index(out, "two"), strings.Index(out, "one"))
+
+	lines := strings.Split(strings.TrimSpace(s.ok("log", "--oneline")), "\n")
+	require.Len(t, lines, 2)
+	assert.Regexp(t, `^[0-9a-f]{7} \(HEAD -> main\) two$`, lines[0])
+	assert.Regexp(t, `^[0-9a-f]{7} one$`, lines[1])
+
+	assert.Len(t, strings.Split(strings.TrimSpace(s.ok("log", "--oneline", "-n", "1")), "\n"), 1)
+}
+
+func TestCommitErrors(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	_, errOut, code := s.run("commit", "-m", "x")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "nothing to commit")
+	s.write("a", "1")
+	s.ok("add", "a")
+	_, errOut, code = s.run("commit")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "empty commit message")
+}
+
+func TestAddErrors(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	_, errOut, code := s.run("add")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "usage: add")
+	_, errOut, code = s.run("add", "nope.txt")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "pathspec 'nope.txt' did not match any files")
+	_, errOut, code = s.run("add", "../outside")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "outside the repository")
+}
+
+func TestSubdirectoryPaths(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("src/main.go", "package main\n")
+	s.dir = filepath.Join(s.dir, "src")
+	s.ok("add", "main.go")
+	out := s.ok("ls-files")
+	assert.Equal(t, "src/main.go\n", out)
+}
+
+func TestCatFileAndHashObject(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("hello.txt", "hello\n")
+	assert.Equal(t, "ce013625030ba8dba906f756967f9e9ca394464a\n", s.ok("hash-object", "hello.txt"))
+	_, _, code := s.run("cat-file", "-t", "ce01362")
+	assert.Equal(t, 1, code, "not stored yet")
+	s.ok("hash-object", "-w", "hello.txt")
+	assert.Equal(t, "blob\n", s.ok("cat-file", "-t", "ce01362"))
+	assert.Equal(t, "6\n", s.ok("cat-file", "-s", "ce01362"))
+	assert.Equal(t, "hello\n", s.ok("cat-file", "-p", "ce01362"))
+	_, errOut, code := s.run("cat-file", "ce01362")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "exactly one of")
+}
+
+func TestLsFilesStage(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("hello.txt", "hello\n")
+	s.ok("add", ".")
+	assert.Equal(t, "100644 ce013625030ba8dba906f756967f9e9ca394464a 0\thello.txt\n", s.ok("ls-files", "--stage"))
+}
+
+func TestConfig(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.ok("config", "user.name", "Grace")
+	assert.Equal(t, "Grace\n", s.ok("config", "user.name"))
+	_, errOut, code := s.run("config", "user.nothing")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "is not set")
+}
+
+func TestInitInDirectoryAndWithBranchName(t *testing.T) {
+	s := newSession(t)
+	s.ok("init", "-b", "trunk", "proj")
+	_, _, code := s.run("init", "proj")
+	assert.Equal(t, 1, code, "second init must fail")
+	s.dir = filepath.Join(s.dir, "proj")
+	assert.Contains(t, s.ok("status"), "On branch trunk")
+}
+
+func TestGlobalDirectoryFlag(t *testing.T) {
+	s := newSession(t)
+	s.ok("init", "proj")
+	out := s.ok("-C", filepath.Join(s.dir, "proj"), "status")
+	assert.Contains(t, out, "On branch main")
+}
+
+func TestStatusShowsModifiedAndDeleted(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1")
+	s.write("b", "1")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+	s.write("a", "2")
+	require.NoError(t, os.Remove(filepath.Join(s.dir, "b")))
+	out := s.ok("status")
+	assert.Contains(t, out, "\tmodified:   a")
+	assert.Contains(t, out, "\tdeleted:    b")
+	assert.Contains(t, out, "no changes added to commit")
+}
