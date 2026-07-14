@@ -118,3 +118,19 @@ func TestAddNeverStagesMetaDir(t *testing.T) {
 	ix, _ := r.LoadIndex()
 	assert.Equal(t, []string{"a"}, ix.Paths())
 }
+
+func TestAddReportsDeletionWhenDirectoryBecomesFile(t *testing.T) {
+	r := newRepo(t)
+	write(t, r, "a/b", "1")
+	_, err := porcelain.Add(r, []string{"."})
+	require.NoError(t, err)
+	require.NoError(t, r.Work.Remove("a/b"))
+	write(t, r, "a", "now a file")
+
+	res, err := porcelain.Add(r, []string{"."})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a/b"}, res.Removed)
+	assert.Equal(t, []string{"a"}, res.Added)
+	ix, _ := r.LoadIndex()
+	assert.Equal(t, []string{"a"}, ix.Paths())
+}

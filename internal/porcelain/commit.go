@@ -3,7 +3,6 @@ package porcelain
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"strings"
 
 	"github.com/sinachaichi/git-simulator/internal/index"
@@ -123,7 +122,7 @@ func stageTracked(r *repo.Repo, ix *index.Index) error {
 		}
 		entry, err := stageFile(r, p)
 		switch {
-		case errors.Is(err, fs.ErrNotExist):
+		case isGone(err):
 			ix.Remove(p)
 		case err != nil:
 			return fmt.Errorf("staging %s: %w", p, err)

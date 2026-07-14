@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/sinachaichi/git-simulator/internal/index"
 	"github.com/sinachaichi/git-simulator/internal/objects"
@@ -67,28 +68,40 @@ func Add(r *repo.Repo, specs []string) (AddResult, error) {
 	}
 	sort.Strings(ordered)
 
+	// Deletions go first. If "a/b" became a file "a", adding "a" would
+	// otherwise drop the "a/b" entry before we could report it.
+	var present []index.Entry
 	for _, p := range ordered {
 		entry, err := stageFile(r, p)
-		old, tracked := ix.Get(p)
 		switch {
-		case errors.Is(err, fs.ErrNotExist):
+		case isGone(err):
 			if ix.Remove(p) {
 				res.Removed = append(res.Removed, p)
 			}
 		case err != nil:
 			return res, err
-		case !tracked:
-			ix.Add(entry)
-			res.Added = append(res.Added, p)
-		case old.ID != entry.ID || old.Mode != entry.Mode:
-			ix.Add(entry)
-			res.Modified = append(res.Modified, p)
 		default:
-			// Unchanged content: refresh the stat data only.
-			ix.Add(entry)
+			present = append(present, entry)
 		}
 	}
+	for _, entry := range present {
+		old, tracked := ix.Get(entry.Path)
+		switch {
+		case !tracked:
+			res.Added = append(res.Added, entry.Path)
+		case old.ID != entry.ID || old.Mode != entry.Mode:
+			res.Modified = append(res.Modified, entry.Path)
+		}
+		// Unchanged files are only refreshed.
+		ix.Add(entry)
+	}
 	return res, r.SaveIndex(ix)
+}
+
+// isGone reports whether err means the file is not there. A path below a
+// file, such as "a/b" when "a" is now a regular file, counts as gone too.
+func isGone(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
 func cleanSpec(spec string) string {
