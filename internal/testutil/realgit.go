@@ -2,6 +2,8 @@ package testutil
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -21,10 +23,30 @@ func RequireGit(t testing.TB) {
 // Identity and dates are fixed so output is reproducible.
 func Git(t testing.TB, dir string, stdin string, args ...string) string {
 	t.Helper()
+	out, err := runGit(dir, stdin, t.TempDir(), args...)
+	if err != nil {
+		t.Fatalf("git %s: %v", strings.Join(args, " "), err)
+	}
+	return out
+}
+
+// GitAllowDiff is like Git but accepts exit code 1, which `git diff
+// --no-index` uses to say "the files differ".
+func GitAllowDiff(t testing.TB, dir string, args ...string) string {
+	t.Helper()
+	out, err := runGit(dir, "", t.TempDir(), args...)
+	var exit *exec.ExitError
+	if err != nil && (!errors.As(err, &exit) || exit.ExitCode() != 1) {
+		t.Fatalf("git %s: %v", strings.Join(args, " "), err)
+	}
+	return out
+}
+
+func runGit(dir, stdin, home string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
-		"HOME="+t.TempDir(),
+		"HOME="+home,
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_AUTHOR_NAME=Ada Lovelace",
@@ -41,9 +63,9 @@ func Git(t testing.TB, dir string, stdin string, args ...string) string {
 	var out, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errBuf
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, errBuf.String())
+		return out.String(), fmt.Errorf("%w\n%s", err, errBuf.String())
 	}
-	return out.String()
+	return out.String(), nil
 }
 
 // BareRepo creates an empty bare git repository and returns its path.
