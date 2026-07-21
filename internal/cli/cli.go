@@ -43,6 +43,7 @@ func commandTable() []command {
 		{"add", "stage files", "add <path>...", cmdAdd},
 		{"commit", "record the staged changes", "commit -m <message> [-a] [--amend] [--allow-empty]", cmdCommit},
 		{"status", "show the state of the working tree and index", "status", cmdStatus},
+		{"diff", "show changes between commits, index and working tree", "diff [--staged] [<rev> [<rev>]] [-- <path>...]", cmdDiff},
 		{"log", "show commit history", "log [--oneline] [-n <count>] [--all] [<rev>...]", cmdLog},
 		{"cat-file", "show an object", "cat-file (-t | -s | -p) <object>", cmdCatFile},
 		{"hash-object", "compute an object id", "hash-object [-w] <file>", cmdHashObject},

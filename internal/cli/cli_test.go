@@ -227,3 +227,60 @@ func TestStatusShowsModifiedAndDeleted(t *testing.T) {
 	assert.Contains(t, out, "\tdeleted:    b")
 	assert.Contains(t, out, "no changes added to commit")
 }
+
+func TestDiffCommand(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a.txt", "one\ntwo\n")
+	s.write("b.txt", "keep\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "first")
+	s.write("a.txt", "one\nTWO\n")
+	s.write("b.txt", "keep\nmore\n")
+
+	out := s.ok("diff")
+	assert.Contains(t, out, "diff --git a/a.txt b/a.txt")
+	assert.Contains(t, out, "-two\n+TWO\n")
+	assert.Contains(t, out, "diff --git a/b.txt b/b.txt")
+
+	out = s.ok("diff", "--", "b.txt")
+	assert.NotContains(t, out, "a.txt")
+	assert.Equal(t, out, s.ok("diff", "b.txt"), "a name that is not a revision is a path")
+
+	assert.Equal(t, "a.txt\nb.txt\n", s.ok("diff", "--name-only"))
+	assert.Equal(t, "M\ta.txt\nM\tb.txt\n", s.ok("diff", "--name-status"))
+	assert.Empty(t, s.ok("diff", "--staged"))
+
+	s.ok("add", "a.txt")
+	assert.Contains(t, s.ok("diff", "--staged"), "+TWO")
+	assert.NotContains(t, s.ok("diff"), "a.txt")
+	assert.Equal(t, s.ok("diff", "--staged"), s.ok("diff", "--cached"))
+
+	s.ok("commit", "-m", "second")
+	out = s.ok("diff", "HEAD~1", "HEAD")
+	assert.Contains(t, out, "-two\n+TWO\n")
+}
+
+func TestDiffContextFlag(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("f", "1\n2\n3\n4\n5\n6\n7\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "first")
+	s.write("f", "1\n2\n3\nX\n5\n6\n7\n")
+	assert.Contains(t, s.ok("diff", "-U", "1"), "@@ -3,3 +3,3 @@")
+	_, errOut, code := s.run("diff", "-U", "-1")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "-U must not be negative")
+}
+
+func TestDiffErrors(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", "a")
+	s.ok("commit", "-m", "first")
+	_, errOut, code := s.run("diff", "--staged", "HEAD", "HEAD")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "--staged")
+}
