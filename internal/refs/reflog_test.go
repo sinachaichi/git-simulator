@@ -77,3 +77,21 @@ func appendFile(p, text string) error {
 	_, err = f.WriteString(text)
 	return errors.Join(err, f.Close())
 }
+
+func TestMoveAndDeleteLog(t *testing.T) {
+	s := newStore(t)
+	require.NoError(t, s.AppendLog("refs/heads/old", refs.LogEntry{New: id("a"), Who: who(1), Message: "branch: Created"}))
+	require.NoError(t, s.MoveLog("refs/heads/old", "refs/heads/feat/new"))
+
+	got, err := s.ReadLog("refs/heads/feat/new")
+	require.NoError(t, err)
+	assert.Len(t, got, 1)
+	got, err = s.ReadLog("refs/heads/old")
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	require.NoError(t, s.DeleteLog("refs/heads/feat/new"))
+	assert.NoDirExists(t, s.Dir+"/logs/refs/heads/feat")
+	assert.NoError(t, s.DeleteLog("refs/heads/feat/new"), "deleting a missing log is fine")
+	assert.NoError(t, s.MoveLog("refs/heads/none", "refs/heads/x"))
+}

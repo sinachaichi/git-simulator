@@ -82,3 +82,33 @@ func parseLogLine(line string) (LogEntry, error) {
 	}
 	return LogEntry{Old: oldID, New: newID, Who: who, Message: msg}, nil
 }
+
+// MoveLog renames the reflog of a ref. A missing log is not an error.
+func (s *Store) MoveLog(from, to string) error {
+	src, dst := s.logPath(from), s.logPath(to)
+	if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return os.Rename(src, dst)
+}
+
+// DeleteLog removes the reflog of a ref and empty parent directories.
+func (s *Store) DeleteLog(name string) error {
+	p := s.logPath(name)
+	if err := os.Remove(p); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	stop := filepath.Join(s.Dir, "logs", "refs", "heads")
+	for dir := filepath.Dir(p); dir != stop && strings.HasPrefix(dir, stop); dir = filepath.Dir(dir) {
+		if os.Remove(dir) != nil {
+			break
+		}
+	}
+	return nil
+}
