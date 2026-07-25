@@ -72,3 +72,27 @@ func TestWalkFailsOnMissingParent(t *testing.T) {
 	_, err = history.Walk(s, []objects.ID{c})
 	assert.ErrorIs(t, err, odb.ErrNotFound)
 }
+
+func TestIsAncestor(t *testing.T) {
+	s, err := odb.New(filepath.Join(t.TempDir(), "objects"))
+	require.NoError(t, err)
+	root := commit(t, s, "root", 100)
+	left := commit(t, s, "left", 200, root)
+	right := commit(t, s, "right", 250, root)
+	merge := commit(t, s, "merge", 300, left, right)
+
+	for _, tc := range []struct {
+		anc, desc objects.ID
+		want      bool
+	}{
+		{root, merge, true},
+		{left, merge, true},
+		{merge, merge, true},
+		{merge, left, false},
+		{left, right, false},
+	} {
+		got, err := history.IsAncestor(s, tc.anc, tc.desc)
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, got)
+	}
+}

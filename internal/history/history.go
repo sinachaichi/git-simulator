@@ -53,3 +53,18 @@ func Walk(s *odb.Store, starts []objects.ID) ([]Node, error) {
 	}
 	return out, nil
 }
+
+// IsAncestor reports whether ancestor is reachable from descendant. A
+// commit counts as its own ancestor, like in git.
+func IsAncestor(s *odb.Store, ancestor, descendant objects.ID) (bool, error) {
+	nodes, err := Walk(s, []objects.ID{descendant})
+	if err != nil {
+		return false, err
+	}
+	for _, n := range nodes {
+		if n.ID == ancestor {
+			return true, nil
+		}
+	}
+	return false, nil
+}

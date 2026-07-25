@@ -6,6 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/sinachaichi/git-simulator/internal/index"
+	"github.com/sinachaichi/git-simulator/internal/objects"
+
 	"github.com/sinachaichi/git-simulator/internal/repo"
 )
 
@@ -36,4 +39,15 @@ func newRepo(t *testing.T) *repo.Repo {
 func write(t *testing.T, r *repo.Repo, path, content string) {
 	t.Helper()
 	require.NoError(t, r.Work.WriteFile(path, []byte(content), 0o644))
+}
+
+// saveConflict puts conflict stages for path into the index.
+func saveConflict(r *repo.Repo, path string) error {
+	ix, err := r.LoadIndex()
+	if err != nil {
+		return err
+	}
+	e := index.Entry{Mode: objects.ModeFile, ID: objects.HashOf(&objects.Blob{Data: []byte(path)})}
+	ix.SetConflict(path, &e, &e, &e)
+	return r.SaveIndex(ix)
 }
