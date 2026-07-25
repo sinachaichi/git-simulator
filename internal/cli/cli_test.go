@@ -284,3 +284,70 @@ func TestDiffErrors(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errOut, "--staged")
 }
+
+func TestBranchAndSwitchSession(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a.txt", "one\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "first")
+
+	assert.Equal(t, "* main\n", s.ok("branch"))
+	s.ok("branch", "feature")
+	assert.Equal(t, "  feature\n* main\n", s.ok("branch"))
+	assert.Regexp(t, `^  feature [0-9a-f]{7} first\n\* main [0-9a-f]{7} first\n$`, s.ok("branch", "-v"))
+
+	assert.Equal(t, "Switched to branch 'feature'\n", s.ok("switch", "feature"))
+	s.write("a.txt", "two\n")
+	s.ok("commit", "-am", "second on feature")
+	assert.Equal(t, "Switched to branch 'main'\n", s.ok("switch", "main"))
+	data, _ := os.ReadFile(filepath.Join(s.dir, "a.txt"))
+	assert.Equal(t, "one\n", string(data))
+	assert.Equal(t, "Already on 'main'\n", s.ok("switch", "main"))
+
+	assert.Equal(t, "Switched to a new branch 'topic'\n", s.ok("switch", "-c", "topic"))
+	assert.Equal(t, "Switched to a new branch 'other'\n", s.ok("checkout", "-b", "other"))
+	assert.Equal(t, "Switched to branch 'main'\n", s.ok("checkout", "main"))
+
+	assert.Regexp(t, `^Deleted branch topic \(was [0-9a-f]{7}\)\.\n$`, s.ok("branch", "-d", "topic"))
+	_, errOut, code := s.run("branch", "-d", "feature")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "not fully merged")
+	s.ok("branch", "-D", "feature")
+	s.ok("branch", "-m", "other", "renamed")
+	assert.Contains(t, s.ok("branch"), "renamed")
+	s.ok("branch", "-m", "trunk")
+	assert.Contains(t, s.ok("status"), "On branch trunk")
+}
+
+func TestCheckoutDetachesAndBranchListShowsIt(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+	s.write("a", "2\n")
+	s.ok("commit", "-am", "two")
+
+	out := s.ok("checkout", "HEAD~1")
+	assert.Contains(t, out, "'detached HEAD' state")
+	assert.Regexp(t, `HEAD is now at [0-9a-f]{7} one\n$`, out)
+	assert.Regexp(t, `^\* \(HEAD detached at [0-9a-f]{7}\)\n  main\n$`, s.ok("branch"))
+	assert.Regexp(t, `^HEAD detached at [0-9a-f]{7}\n`, s.ok("status"))
+}
+
+func TestSwitchRefusesToLoseChanges(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+	s.ok("switch", "-c", "feature")
+	s.write("a", "2\n")
+	s.ok("commit", "-am", "two")
+	s.write("a", "dirty\n")
+	_, errOut, code := s.run("switch", "main")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "would be overwritten")
+	assert.Contains(t, errOut, "a")
+}
