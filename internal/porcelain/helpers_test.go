@@ -8,6 +8,7 @@ import (
 
 	"github.com/sinachaichi/git-simulator/internal/index"
 	"github.com/sinachaichi/git-simulator/internal/objects"
+	"github.com/sinachaichi/git-simulator/internal/revparse"
 
 	"github.com/sinachaichi/git-simulator/internal/repo"
 )
@@ -50,4 +51,11 @@ func saveConflict(r *repo.Repo, path string) error {
 	e := index.Entry{Mode: objects.ModeFile, ID: objects.HashOf(&objects.Blob{Data: []byte(path)})}
 	ix.SetConflict(path, &e, &e, &e)
 	return r.SaveIndex(ix)
+}
+
+func revparseCommit(t *testing.T, r *repo.Repo, rev string) objects.ID {
+	t.Helper()
+	id, err := revparse.ResolveCommit(r, rev)
+	require.NoError(t, err)
+	return id
 }
