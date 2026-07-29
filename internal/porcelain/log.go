@@ -110,7 +110,10 @@ func Decorations(r *repo.Repo) (map[objects.ID][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, t := range tags {
+	// Git prints refs of one kind in reverse name order, because it adds
+	// each new decoration in front of the list.
+	for i := len(tags) - 1; i >= 0; i-- {
+		t := tags[i]
 		id, err := peelToCommit(r, t.ID)
 		if err != nil {
 			return nil, err
@@ -121,7 +124,8 @@ func Decorations(r *repo.Repo) (map[objects.ID][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, b := range branches {
+	for i := len(branches) - 1; i >= 0; i-- {
+		b := branches[i]
 		if b.Name == head.Ref {
 			continue
 		}

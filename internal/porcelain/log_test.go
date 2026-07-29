@@ -89,13 +89,16 @@ func TestDecorations(t *testing.T) {
 	head, _ := r.Refs.Head()
 	require.NoError(t, r.Refs.Update("refs/heads/feature", head.ID))
 	require.NoError(t, r.Refs.Update("refs/tags/v1", head.ID))
+	require.NoError(t, r.Refs.Update("refs/tags/v2", head.ID))
+	require.NoError(t, r.Refs.Update("refs/heads/aaa", head.ID))
 
 	d, err := porcelain.Decorations(r)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"HEAD -> main", "tag: v1", "feature"}, d[head.ID])
+	// Same order as real git: tags and branches in reverse name order.
+	assert.Equal(t, []string{"HEAD -> main", "tag: v2", "tag: v1", "feature", "aaa"}, d[head.ID])
 
 	require.NoError(t, r.Refs.SetHeadDetached(head.ID))
 	d, err = porcelain.Decorations(r)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"HEAD", "tag: v1", "feature", "main"}, d[head.ID])
+	assert.Equal(t, []string{"HEAD", "tag: v2", "tag: v1", "main", "feature", "aaa"}, d[head.ID])
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/sinachaichi/git-simulator/internal/cli"
+	"github.com/sinachaichi/git-simulator/internal/testutil"
 )
 
 // session runs commands the way a user would, in one directory.
@@ -350,4 +351,51 @@ func TestSwitchRefusesToLoseChanges(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errOut, "would be overwritten")
 	assert.Contains(t, errOut, "a")
+}
+
+func TestTagCommand(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+
+	assert.Empty(t, s.ok("tag"))
+	s.ok("tag", "v0.1")
+	s.ok("tag", "-a", "-m", "release one", "v1.0")
+	s.ok("tag", "-m", "notes", "v1.1")
+	assert.Equal(t, "v0.1\nv1.0\nv1.1\n", s.ok("tag", "-l"))
+	assert.Contains(t, s.ok("log", "--oneline"), "(HEAD -> main, tag: v1.1, tag: v1.0, tag: v0.1)")
+
+	assert.Equal(t, "commit\n", s.ok("cat-file", "-t", "v0.1"))
+	assert.Equal(t, "tag\n", s.ok("cat-file", "-t", "v1.0"))
+	assert.Contains(t, s.ok("cat-file", "-p", "v1.0"), "tag v1.0\ntagger Ada Lovelace <ada@example.com>")
+
+	assert.Regexp(t, `^Deleted tag 'v0.1' \(was [0-9a-f]{7}\)\n$`, s.ok("tag", "-d", "v0.1"))
+	_, errOut, code := s.run("tag", "v1.0")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "tag already exists")
+	_, errOut, code = s.run("tag", "-a", "v2")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "needs a message")
+}
+
+func TestRealGitReadsOurTags(t *testing.T) {
+	testutil.RequireGit(t)
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+	s.ok("tag", "light")
+	s.ok("tag", "-m", "annotated message", "heavy")
+
+	git := func(args ...string) string {
+		return testutil.Git(t, s.dir, "", append([]string{"--git-dir=" + filepath.Join(s.dir, ".hood")}, args...)...)
+	}
+	git("fsck", "--strict")
+	assert.Equal(t, "heavy\nlight\n", git("tag", "-l"))
+	assert.Equal(t, "tag\n", git("cat-file", "-t", "heavy"))
+	assert.Equal(t, "commit\n", git("cat-file", "-t", "heavy^{}"))
+	assert.Contains(t, git("tag", "-n1", "heavy"), "annotated message")
 }
