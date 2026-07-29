@@ -82,7 +82,7 @@ func cmdCommit(c *Context, args []string) error {
 		return err
 	}
 	res, err := porcelain.Commit(r, porcelain.CommitOptions{
-		Message: strings.Join(messages, "\n\n"), All: *all, Amend: *amend, AllowEmpty: *empty,
+		Message: joinMessages(messages), All: *all, Amend: *amend, AllowEmpty: *empty,
 	})
 	if err != nil {
 		return err
@@ -100,6 +100,11 @@ func cmdCommit(c *Context, args []string) error {
 	}
 	fmt.Fprintf(c.Stdout, "[%s %s] %s\n", where, short, res.Commit.Subject())
 	return nil
+}
+
+// joinMessages turns repeated -m values into paragraphs.
+func joinMessages(messages []string) string {
+	return strings.Join(messages, "\n\n")
 }
 
 func cmdConfig(c *Context, args []string) error {
