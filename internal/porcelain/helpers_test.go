@@ -59,3 +59,17 @@ func revparseCommit(t *testing.T, r *repo.Repo, rev string) objects.ID {
 	require.NoError(t, err)
 	return id
 }
+
+// mergeCommit writes a merge commit of two commits with the tree of the
+// second one. It does not touch refs or the working tree.
+func mergeCommit(t *testing.T, r *repo.Repo, first, second objects.ID) objects.ID {
+	t.Helper()
+	c, err := r.ODB.ReadCommit(second)
+	require.NoError(t, err)
+	merge := *c
+	merge.Parents = []objects.ID{first, second}
+	merge.Message = "merge\n"
+	id, _, err := r.ODB.Write(&merge)
+	require.NoError(t, err)
+	return id
+}
