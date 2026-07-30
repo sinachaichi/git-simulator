@@ -399,3 +399,38 @@ func TestRealGitReadsOurTags(t *testing.T) {
 	assert.Equal(t, "commit\n", git("cat-file", "-t", "heavy^{}"))
 	assert.Contains(t, git("tag", "-n1", "heavy"), "annotated message")
 }
+
+func TestShowCommand(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a.txt", "one\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "first")
+	s.write("a.txt", "two\n")
+	s.ok("commit", "-am", "second")
+	s.ok("tag", "-m", "release", "v1")
+
+	out := s.ok("show")
+	assert.Contains(t, out, "(HEAD -> main, tag: v1)")
+	assert.Contains(t, out, "    second\n\ndiff --git a/a.txt b/a.txt")
+	assert.Contains(t, out, "-one\n+two\n")
+
+	out = s.ok("show", "HEAD~1")
+	assert.Contains(t, out, "new file mode 100644")
+
+	out = s.ok("show", "v1")
+	assert.True(t, strings.HasPrefix(out, "tag v1\nTagger: Ada Lovelace <ada@example.com>\n"))
+	assert.Contains(t, out, "release\n")
+	assert.Contains(t, out, "    second\n")
+
+	assert.Equal(t, "a.txt\n", strings.SplitN(s.ok("show", "HEAD^{tree}"), "\n\n", 2)[1])
+	assert.Equal(t, "two\n", s.ok("show", firstBlobPrefix(t, s)))
+	_, _, code := s.run("show", "nope")
+	assert.Equal(t, 1, code)
+}
+
+func firstBlobPrefix(t *testing.T, s *session) string {
+	t.Helper()
+	line := strings.TrimSpace(s.ok("ls-files", "--stage"))
+	return strings.Fields(line)[1]
+}
