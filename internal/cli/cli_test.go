@@ -434,3 +434,25 @@ func firstBlobPrefix(t *testing.T, s *session) string {
 	line := strings.TrimSpace(s.ok("ls-files", "--stage"))
 	return strings.Fields(line)[1]
 }
+
+func TestRmCommand(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.write("d/x", "x\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "first")
+
+	assert.Equal(t, "rm 'a'\n", s.ok("rm", "a"))
+	_, err := os.Stat(filepath.Join(s.dir, "a"))
+	assert.True(t, os.IsNotExist(err))
+	assert.Contains(t, s.ok("status"), "\tdeleted:    a")
+
+	_, errOut, code := s.run("rm", "d")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "not removing a directory without -r")
+	assert.Equal(t, "rm 'd/x'\n", s.ok("rm", "-r", "--cached", "d"))
+	_, errOut, code = s.run("rm")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "usage: rm")
+}
