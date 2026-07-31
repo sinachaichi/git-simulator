@@ -41,11 +41,13 @@ func commandTable() []command {
 	return []command{
 		{"init", "create an empty repository", "init [dir]", cmdInit},
 		{"add", "stage files", "add <path>...", cmdAdd},
+		{"rm", "remove files from the index and the working tree", "rm [--cached] [-f] [-r] <path>...", cmdRm},
 		{"commit", "record the staged changes", "commit -m <message> [-a] [--amend] [--allow-empty]", cmdCommit},
 		{"status", "show the state of the working tree and index", "status", cmdStatus},
 		{"branch", "list, create, rename or delete branches", "branch [-v] | branch <name> [<start>] | branch -d|-D <name>... | branch -m [<old>] <new>", cmdBranch},
 		{"switch", "switch to a branch", "switch [--detach] <branch> | switch -c <name> [<start>]", cmdSwitch},
 		{"checkout", "switch branches or detach HEAD at a commit", "checkout <branch|commit> | checkout -b <name> [<start>]", cmdCheckout},
+		{"show", "show a commit, tag, tree or blob", "show [<object>]", cmdShow},
 		{"tag", "list, create or delete tags", "tag [-l] | tag <name> [<commit>] | tag -a -m <message> <name> [<commit>] | tag -d <name>...", cmdTag},
 		{"diff", "show changes between commits, index and working tree", "diff [--staged] [<rev> [<rev>]] [-- <path>...]", cmdDiff},
 		{"log", "show commit history", "log [--oneline] [-n <count>] [--all] [<rev>...]", cmdLog},

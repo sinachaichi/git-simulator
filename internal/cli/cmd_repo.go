@@ -226,3 +226,32 @@ func cmdLsFiles(c *Context, args []string) error {
 	}
 	return nil
 }
+
+func cmdRm(c *Context, args []string) error {
+	fs := newFlags("rm")
+	cached := fs.Bool("cached", false, "only remove from the index")
+	force := fs.Bool("f", false, "remove even with local changes")
+	recursive := fs.Bool("r", false, "allow removing directories")
+	rest, err := parseFlags(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) == 0 {
+		return usagef("rm needs at least one path")
+	}
+	r, err := c.openRepo()
+	if err != nil {
+		return err
+	}
+	specs := make([]string, len(rest))
+	for i, p := range rest {
+		if specs[i], err = c.repoPath(r, p); err != nil {
+			return err
+		}
+	}
+	removed, err := porcelain.Rm(r, specs, porcelain.RmOptions{Cached: *cached, Force: *force, Recursive: *recursive})
+	for _, p := range removed {
+		fmt.Fprintf(c.Stdout, "rm '%s'\n", p)
+	}
+	return err
+}
