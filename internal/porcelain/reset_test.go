@@ -141,3 +141,64 @@ func TestResetErrors(t *testing.T) {
 	_, err = porcelain.Reset(r, "HEAD", porcelain.ResetMixed)
 	require.NoError(t, err, "a mixed reset clears the conflict")
 }
+
+func TestResetPathsUnstagesFiles(t *testing.T) {
+	r := threeCommits(t)
+	write(t, r, "a.txt", "edited\n")
+	write(t, r, "new.txt", "n\n")
+	_, err := porcelain.Add(r, []string{"."})
+	require.NoError(t, err)
+
+	changed, err := porcelain.ResetPaths(r, "", []string{"a.txt", "new.txt"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a.txt", "new.txt"}, changed)
+
+	s := status(t, r)
+	assert.Empty(t, s.Staged)
+	assert.Equal(t, []porcelain.Change{{Path: "a.txt", Kind: porcelain.Modified}}, s.Unstaged)
+	assert.Equal(t, []string{"new.txt"}, s.Untracked)
+	assert.Equal(t, "edited\n", read(t, r, "a.txt"), "the working tree is untouched")
+}
+
+func TestResetPathsFromAnotherRevisionAndDirectories(t *testing.T) {
+	r := newRepo(t)
+	write(t, r, "d/x", "1\n")
+	commitAll(t, r, "one")
+	write(t, r, "d/x", "2\n")
+	commitAll(t, r, "two")
+
+	changed, err := porcelain.ResetPaths(r, "HEAD~1", []string{"d"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"d/x"}, changed)
+	s := status(t, r)
+	assert.Equal(t, []porcelain.Change{{Path: "d/x", Kind: porcelain.Modified}}, s.Staged)
+	assert.Equal(t, []porcelain.Change{{Path: "d/x", Kind: porcelain.Modified}}, s.Unstaged)
+}
+
+func TestResetPathsBeforeFirstCommit(t *testing.T) {
+	r := newRepo(t)
+	write(t, r, "a", "1\n")
+	_, err := porcelain.Add(r, []string{"a"})
+	require.NoError(t, err)
+	_, err = porcelain.ResetPaths(r, "", []string{"a"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a"}, status(t, r).Untracked)
+}
+
+func TestResetPathsClearsConflictsAndRejectsUnknownPaths(t *testing.T) {
+	r := threeCommits(t)
+	require.NoError(t, saveConflict(r, "a.txt"))
+	_, err := porcelain.ResetPaths(r, "", []string{"a.txt"})
+	require.NoError(t, err)
+	assert.Empty(t, status(t, r).Unmerged)
+
+	_, err = porcelain.ResetPaths(r, "", []string{"ghost"})
+	assert.Error(t, err)
+}
+
+func TestResetPathsNothingToDo(t *testing.T) {
+	r := threeCommits(t)
+	changed, err := porcelain.ResetPaths(r, "", []string{"a.txt"})
+	require.NoError(t, err)
+	assert.Empty(t, changed)
+}
