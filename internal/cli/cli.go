@@ -41,6 +41,7 @@ func commandTable() []command {
 	return []command{
 		{"init", "create an empty repository", "init [dir]", cmdInit},
 		{"add", "stage files", "add <path>...", cmdAdd},
+		{"reset", "move HEAD, or unstage files", "reset [--soft|--mixed|--hard] [<rev>] | reset [<rev>] [--] <path>...", cmdReset},
 		{"rm", "remove files from the index and the working tree", "rm [--cached] [-f] [-r] <path>...", cmdRm},
 		{"commit", "record the staged changes", "commit -m <message> [-a] [--amend] [--allow-empty]", cmdCommit},
 		{"status", "show the state of the working tree and index", "status", cmdStatus},

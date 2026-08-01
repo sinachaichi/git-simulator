@@ -456,3 +456,58 @@ func TestRmCommand(t *testing.T) {
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errOut, "usage: rm")
 }
+
+func TestResetCommand(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	for _, v := range []string{"v1", "v2", "v3"} {
+		s.write("a", v+"\n")
+		s.ok("add", ".")
+		s.ok("commit", "-m", v)
+	}
+	read := func() string {
+		data, _ := os.ReadFile(filepath.Join(s.dir, "a"))
+		return string(data)
+	}
+
+	s.ok("reset", "--soft", "HEAD~1")
+	assert.Contains(t, s.ok("status"), "Changes to be committed:")
+	assert.Equal(t, "v3\n", read())
+
+	s.ok("reset")
+	assert.Contains(t, s.ok("status"), "Changes not staged for commit:")
+
+	out := s.ok("reset", "--hard", "HEAD~1")
+	assert.Regexp(t, `^HEAD is now at [0-9a-f]{7} v1\n$`, out)
+	assert.Equal(t, "v1\n", read())
+
+	s.ok("reset", "--hard", "ORIG_HEAD")
+	assert.Equal(t, "v2\n", read())
+}
+
+func TestResetPathsCommand(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+	s.write("a", "2\n")
+	s.write("b", "new\n")
+	s.ok("add", ".")
+
+	assert.Equal(t, "Unstaged changes after reset:\nM\ta\nM\tb\n", s.ok("reset", "a", "b"))
+	out := s.ok("status")
+	assert.NotContains(t, out, "Changes to be committed")
+	assert.Contains(t, out, "\tmodified:   a")
+
+	s.ok("add", "a")
+	s.ok("reset", "HEAD", "--", "a")
+	assert.NotContains(t, s.ok("status"), "Changes to be committed")
+
+	_, errOut, code := s.run("reset", "--hard", "a")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "cannot be combined with paths")
+	_, errOut, code = s.run("reset", "--soft", "--hard")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "only one of")
+}
