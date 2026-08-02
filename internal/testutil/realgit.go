@@ -75,3 +75,19 @@ func BareRepo(t testing.TB) string {
 	Git(t, dir, "", "init", "--bare", "-q", ".")
 	return dir
 }
+
+// GitExit runs git and returns its output and exit code, for commands
+// that use the exit code to report a result, like `merge-file`.
+func GitExit(t testing.TB, dir string, args ...string) (string, int) {
+	t.Helper()
+	out, err := runGit(dir, "", t.TempDir(), args...)
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return out, 0
+	case errors.As(err, &exit):
+		return out, exit.ExitCode()
+	}
+	t.Fatalf("git %s: %v", strings.Join(args, " "), err)
+	return "", -1
+}
