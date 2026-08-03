@@ -105,34 +105,42 @@ func createAndSwitch(r *repo.Repo, head refs.Head, name string, opts SwitchOptio
 	return res, moveToCommit(r, head, &res)
 }
 
-// moveToCommit updates files, index and HEAD for res.ToID.
-func moveToCommit(r *repo.Repo, from refs.Head, res *SwitchResult) error {
+// updateWorktree makes the index and the working tree match the target
+// commit, starting from HEAD's tree, and returns how many paths changed.
+// It refuses to run over uncommitted work (see checkLocalChanges).
+func updateWorktree(r *repo.Repo, target objects.ID) (int, error) {
 	cur, err := headFiles(r)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	tgt, err := commitFiles(r, res.ToID)
+	tgt, err := commitFiles(r, target)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	ix, err := r.LoadIndex()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if len(ix.Conflicts()) > 0 {
-		return ErrUnmergedIndex
+		return 0, ErrUnmergedIndex
 	}
 	changed := differingPaths(cur, tgt)
 	if err := checkLocalChanges(r, ix, cur, tgt, changed); err != nil {
-		return err
+		return 0, err
 	}
 	if err := syncPaths(r, ix, tgt, changed); err != nil {
+		return 0, err
+	}
+	return len(changed), r.SaveIndex(ix)
+}
+
+// moveToCommit updates files, index and HEAD for res.ToID.
+func moveToCommit(r *repo.Repo, from refs.Head, res *SwitchResult) error {
+	files, err := updateWorktree(r, res.ToID)
+	if err != nil {
 		return err
 	}
-	if err := r.SaveIndex(ix); err != nil {
-		return err
-	}
-	res.Files = len(changed)
+	res.Files = files
 
 	who, err := r.Identity("committer")
 	if err != nil {
