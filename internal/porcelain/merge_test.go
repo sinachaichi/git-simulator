@@ -184,7 +184,7 @@ func TestMergeConflictLeavesMergeState(t *testing.T) {
 	res, err := porcelain.Merge(r, "feature", porcelain.MergeOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, porcelain.MergeConflicted, res.Outcome)
-	assert.Equal(t, []porcelain.ConflictInfo{{Path: "shared.txt", Kind: merge.ContentConflict}}, res.Conflicts)
+	assert.Equal(t, []porcelain.ConflictInfo{{Path: "shared.txt", Kind: merge.ContentConflict, HasOurs: true, HasTheirs: true}}, res.Conflicts)
 
 	assert.Equal(t, mainTip, headID(t, r), "HEAD does not move")
 	assert.True(t, porcelain.MergeInProgress(r))
@@ -243,8 +243,8 @@ func TestMergeModifyDeleteAndAddAddConflicts(t *testing.T) {
 	res, err := porcelain.Merge(r, "feature", porcelain.MergeOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, []porcelain.ConflictInfo{
-		{Path: "both-new", Kind: merge.AddAdd},
-		{Path: "shared.txt", Kind: merge.ModifyDelete},
+		{Path: "both-new", Kind: merge.AddAdd, HasOurs: true, HasTheirs: true},
+		{Path: "shared.txt", Kind: merge.ModifyDelete, HasOurs: false, HasTheirs: true},
 	}, res.Conflicts)
 
 	kinds := map[string]porcelain.ConflictKind{}
@@ -402,4 +402,37 @@ func TestRealGitSeesOurConflictState(t *testing.T) {
 	assert.Contains(t, stages, " 3\tshared.txt")
 	assert.Equal(t, headID(t, r).String()+"\n", git("rev-parse", "HEAD"))
 	assert.Equal(t, revparseCommit(t, r, "feature").String()+"\n", git("rev-parse", "MERGE_HEAD"))
+}
+
+func TestMergeAbortRestoresTheOldState(t *testing.T) {
+	r := conflicting(t)
+	mainTip := headID(t, r)
+	before := read(t, r, "shared.txt")
+	_, err := porcelain.Merge(r, "feature", porcelain.MergeOptions{})
+	require.NoError(t, err)
+	require.NoError(t, porcelain.MergeAbort(r))
+
+	assert.Equal(t, mainTip, headID(t, r))
+	assert.Equal(t, before, read(t, r, "shared.txt"))
+	assert.False(t, porcelain.MergeInProgress(r))
+	assert.True(t, status(t, r).Clean())
+
+	// The merge can be started again.
+	_, err = porcelain.Merge(r, "feature", porcelain.MergeOptions{})
+	require.NoError(t, err)
+}
+
+func TestMergeAbortRemovesFilesTheMergeAdded(t *testing.T) {
+	r := diverged(t,
+		func(r *repo.Repo) { write(t, r, "main-only", "m\n") },
+		func(r *repo.Repo) { write(t, r, "feature-only", "f\n") })
+	_, err := porcelain.Merge(r, "feature", porcelain.MergeOptions{NoCommit: true})
+	require.NoError(t, err)
+	assert.True(t, r.Work.Exists("feature-only"))
+	require.NoError(t, porcelain.MergeAbort(r))
+	assert.False(t, r.Work.Exists("feature-only"))
+}
+
+func TestMergeAbortWithoutMerge(t *testing.T) {
+	assert.True(t, errors.Is(porcelain.MergeAbort(twoCommits(t)), porcelain.ErrNoMergeInProgress))
 }

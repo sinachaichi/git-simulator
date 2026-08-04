@@ -53,10 +53,13 @@ const (
 	MergeConflicted  MergeOutcome = "conflicted"
 )
 
-// ConflictInfo describes one conflicted path.
+// ConflictInfo describes one conflicted path. The Has fields say which
+// versions exist, so a message can tell who deleted a file.
 type ConflictInfo struct {
-	Path string
-	Kind merge.ConflictKind
+	Path      string
+	Kind      merge.ConflictKind
+	HasOurs   bool
+	HasTheirs bool
 }
 
 // MergeResult is what Merge returns.
@@ -190,7 +193,7 @@ func threeWay(r *repo.Repo, head refs.Head, rev string, opts MergeOptions, res M
 		if err := writeConflict(r, ix, c); err != nil {
 			return res, err
 		}
-		res.Conflicts = append(res.Conflicts, ConflictInfo{Path: c.Path, Kind: c.Kind})
+		res.Conflicts = append(res.Conflicts, ConflictInfo{Path: c.Path, Kind: c.Kind, HasOurs: c.Ours != nil, HasTheirs: c.Theirs != nil})
 	}
 	if err := r.SaveIndex(ix); err != nil {
 		return res, err
@@ -329,4 +332,15 @@ func readMergeState(r *repo.Repo) (parent objects.ID, message string, ok bool, e
 		return objects.Zero, "", false, err
 	}
 	return parent, string(msg), true, nil
+}
+
+// MergeAbort gives up an unfinished merge and puts the index and the
+// working tree back to HEAD. Local changes made during the merge are
+// lost, as with `reset --hard`.
+func MergeAbort(r *repo.Repo) error {
+	if !MergeInProgress(r) {
+		return ErrNoMergeInProgress
+	}
+	_, err := Reset(r, "HEAD", ResetHard)
+	return err
 }
