@@ -42,6 +42,7 @@ func commandTable() []command {
 		{"init", "create an empty repository", "init [dir]", cmdInit},
 		{"add", "stage files", "add <path>...", cmdAdd},
 		{"reset", "move HEAD, or unstage files", "reset [--soft|--mixed|--hard] [<rev>] | reset [<rev>] [--] <path>...", cmdReset},
+		{"merge", "join another branch into the current one", "merge [--no-ff|--ff-only] [--no-commit] [-m <message>] <branch> | merge --abort", cmdMerge},
 		{"rm", "remove files from the index and the working tree", "rm [--cached] [-f] [-r] <path>...", cmdRm},
 		{"commit", "record the staged changes", "commit -m <message> [-a] [--amend] [--allow-empty]", cmdCommit},
 		{"status", "show the state of the working tree and index", "status", cmdStatus},
@@ -109,6 +110,9 @@ func Run(args []string, env Env, version string) int {
 		return 2
 	}
 	if err := cmd.run(ctx, args[1:]); err != nil {
+		if errors.Is(err, errConflicts) {
+			return 1
+		}
 		var usage *usageError
 		if errors.As(err, &usage) {
 			fmt.Fprintf(env.Stderr, "error: %s\nusage: %s\n", err, cmd.usage)
