@@ -49,7 +49,7 @@ func writeStatus(w io.Writer, s term.Style, res porcelain.StatusResult) {
 		fmt.Fprintln(w, "  (fix conflicts and run \"add <file>...\" to mark resolution)")
 		fmt.Fprintln(w)
 		for _, u := range res.Unmerged {
-			fmt.Fprintf(w, "\t%s\n", s.Red(fmt.Sprintf("%-16s%s", string(u.Kind)+":", u.Path)))
+			fmt.Fprintf(w, "\t%s\n", s.Red(fmt.Sprintf("%-17s%s", string(u.Kind)+":", u.Path)))
 		}
 	}
 	if len(res.Staged) > 0 {

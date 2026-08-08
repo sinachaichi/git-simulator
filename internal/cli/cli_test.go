@@ -511,3 +511,108 @@ func TestResetPathsCommand(t *testing.T) {
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errOut, "only one of")
 }
+
+func TestMergeSessionFastForwardThenThreeWayThenConflict(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("story.txt", "intro\nmiddle\nend\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "base")
+	s.ok("branch", "other")
+
+	// Fast-forward.
+	s.ok("switch", "-c", "ff")
+	s.write("extra.txt", "x\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "extra")
+	s.ok("switch", "main")
+	out := s.ok("merge", "ff")
+	assert.Regexp(t, `^Updating [0-9a-f]{7}\.\.[0-9a-f]{7}\nFast-forward\n$`, out)
+	assert.Equal(t, "Already up to date.\n", s.ok("merge", "ff"))
+
+	// Three-way merge, no conflict.
+	s.ok("switch", "-c", "docs")
+	s.write("README", "hi\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "docs")
+	s.ok("switch", "main")
+	s.write("story.txt", "intro\nMAIN\nend\n")
+	s.ok("commit", "-am", "main edit")
+	assert.Equal(t, "Merge made by the 'ort' strategy.\n", s.ok("merge", "docs"))
+	assert.Contains(t, s.ok("log", "--oneline", "-n", "1"), "Merge branch 'docs'")
+
+	// Conflict.
+	s.ok("switch", "other")
+	s.write("story.txt", "intro\nOTHER\nend\n")
+	s.ok("commit", "-am", "other edit")
+	s.ok("switch", "main")
+	out, _, code := s.run("merge", "other")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, out, "CONFLICT (content): Merge conflict in story.txt")
+	assert.Contains(t, out, "Automatic merge failed; fix conflicts and then commit the result.")
+	status := s.ok("status")
+	assert.Contains(t, status, "Unmerged paths:")
+	assert.Contains(t, status, "both modified:   story.txt")
+	data, _ := os.ReadFile(filepath.Join(s.dir, "story.txt"))
+	assert.Equal(t, "intro\n<<<<<<< HEAD\nMAIN\n=======\nOTHER\n>>>>>>> other\nend\n", string(data))
+
+	_, errOut, code := s.run("commit", "-m", "too early")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "unmerged paths")
+
+	s.write("story.txt", "intro\nBOTH\nend\n")
+	s.ok("add", "story.txt")
+	out = s.ok("commit")
+	assert.Regexp(t, `^\[main [0-9a-f]{7}\] Merge branch 'other'\n$`, out)
+	assert.Equal(t, "On branch main\nnothing to commit, working tree clean\n", s.ok("status"))
+}
+
+func TestMergeAbortAndErrors(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "base")
+	s.ok("switch", "-c", "side")
+	s.write("a", "side\n")
+	s.ok("commit", "-am", "side")
+	s.ok("switch", "main")
+	s.write("a", "main\n")
+	s.ok("commit", "-am", "main")
+
+	_, _, code := s.run("merge", "side")
+	assert.Equal(t, 1, code)
+	s.ok("merge", "--abort")
+	assert.Contains(t, s.ok("status"), "nothing to commit, working tree clean")
+	_, errOut, code := s.run("merge", "--abort")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "no merge in progress")
+
+	_, errOut, code = s.run("merge", "--ff-only", "side")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "not possible to fast-forward")
+	_, errOut, code = s.run("merge")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "usage: merge")
+	_, _, code = s.run("merge", "--no-ff", "--ff-only", "side")
+	assert.Equal(t, 2, code)
+}
+
+func TestModifyDeleteConflictMessage(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.write("keep", "k\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "base")
+	s.ok("switch", "-c", "side")
+	s.write("a", "edited\n")
+	s.ok("commit", "-am", "edit")
+	s.ok("switch", "main")
+	s.ok("rm", "a")
+	s.ok("commit", "-m", "delete")
+	out, _, code := s.run("merge", "side")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, out, "CONFLICT (modify/delete): a deleted in HEAD and modified in side. Version side of a left in tree.")
+	assert.Contains(t, s.ok("status"), "deleted by us:   a")
+}

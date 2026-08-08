@@ -22,6 +22,8 @@ type CommitOptions struct {
 	All        bool // -a: stage changes to tracked files first
 	Amend      bool // --amend: replace the tip commit
 	AllowEmpty bool // --allow-empty
+
+	reflogMessage string // set by Merge to word the reflog like git does
 }
 
 // CommitResult describes the new commit.
@@ -56,6 +58,14 @@ func Commit(r *repo.Repo, opts CommitOptions) (CommitResult, error) {
 		return CommitResult{}, err
 	}
 
+	mergeParent, mergeMessage, merging, err := readMergeState(r)
+	if err != nil {
+		return CommitResult{}, err
+	}
+	if merging && opts.Amend {
+		return CommitResult{}, errors.New("cannot amend while a merge is in progress")
+	}
+
 	var parents []objects.ID
 	var old *objects.Commit
 	if !head.Unborn() {
@@ -64,13 +74,16 @@ func Commit(r *repo.Repo, opts CommitOptions) (CommitResult, error) {
 		}
 		parents = []objects.ID{head.ID}
 	}
+	if merging {
+		parents = append(parents, mergeParent)
+	}
 	if opts.Amend {
 		if old == nil {
 			return CommitResult{}, errors.New("cannot amend: there is no commit yet")
 		}
 		parents = old.Parents
 	}
-	if !opts.AllowEmpty && !opts.Amend && old != nil && old.Tree == treeID {
+	if !opts.AllowEmpty && !opts.Amend && !merging && old != nil && old.Tree == treeID {
 		return CommitResult{}, ErrNothingToCommit
 	}
 	if old == nil && ix.Len() == 0 && !opts.AllowEmpty {
@@ -80,6 +93,9 @@ func Commit(r *repo.Repo, opts CommitOptions) (CommitResult, error) {
 	message := CleanMessage(opts.Message)
 	if message == "" && opts.Amend {
 		message = old.Message
+	}
+	if message == "" && merging {
+		message = mergeMessage
 	}
 	if message == "" {
 		return CommitResult{}, ErrEmptyMessage
@@ -104,11 +120,20 @@ func Commit(r *repo.Repo, opts CommitOptions) (CommitResult, error) {
 	switch {
 	case opts.Amend:
 		kind = "commit (amend)"
+	case merging:
+		kind = "commit (merge)"
 	case len(parents) == 0:
 		kind = "commit (initial)"
 	}
-	if err := moveHead(r, id, kind+": "+c.Subject()); err != nil {
+	logMessage := kind + ": " + c.Subject()
+	if opts.reflogMessage != "" {
+		logMessage = opts.reflogMessage
+	}
+	if err := moveHead(r, id, logMessage); err != nil {
 		return CommitResult{}, err
+	}
+	if merging {
+		clearMergeState(r)
 	}
 	return CommitResult{ID: id, Commit: c, Branch: head.Branch(), Root: len(parents) == 0, Amended: opts.Amend}, nil
 }

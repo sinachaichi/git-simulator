@@ -96,3 +96,50 @@ func TestIsAncestor(t *testing.T) {
 		assert.Equal(t, tc.want, got)
 	}
 }
+
+func TestMergeBases(t *testing.T) {
+	s, err := odb.New(filepath.Join(t.TempDir(), "objects"))
+	require.NoError(t, err)
+	root := commit(t, s, "root", 100)
+	a1 := commit(t, s, "a1", 200, root)
+	b1 := commit(t, s, "b1", 210, root)
+	a2 := commit(t, s, "a2", 300, a1)
+	b2 := commit(t, s, "b2", 310, b1)
+	merged := commit(t, s, "merged", 400, a2, b2)
+	later := commit(t, s, "later", 500, a2)
+
+	base := func(x, y objects.ID) []objects.ID {
+		got, err := history.MergeBases(s, x, y)
+		require.NoError(t, err)
+		return got
+	}
+	assert.Equal(t, []objects.ID{root}, base(a2, b2))
+	assert.Equal(t, []objects.ID{root}, base(b2, a2), "order does not matter")
+	assert.Equal(t, []objects.ID{a2}, base(a2, later), "an ancestor is its own best base")
+	assert.Equal(t, []objects.ID{a2}, base(later, merged))
+	assert.Equal(t, []objects.ID{a2}, base(a2, a2))
+}
+
+func TestMergeBasesOfUnrelatedHistoriesIsEmpty(t *testing.T) {
+	s, err := odb.New(filepath.Join(t.TempDir(), "objects"))
+	require.NoError(t, err)
+	x := commit(t, s, "x", 100)
+	y := commit(t, s, "y", 200)
+	got, err := history.MergeBases(s, x, y)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+func TestMergeBasesCrissCross(t *testing.T) {
+	s, err := odb.New(filepath.Join(t.TempDir(), "objects"))
+	require.NoError(t, err)
+	root := commit(t, s, "root", 100)
+	a := commit(t, s, "a", 200, root)
+	b := commit(t, s, "b", 210, root)
+	// Each side merges the other, which leaves two best bases.
+	am := commit(t, s, "am", 300, a, b)
+	bm := commit(t, s, "bm", 310, b, a)
+	got, err := history.MergeBases(s, am, bm)
+	require.NoError(t, err)
+	assert.Equal(t, []objects.ID{b, a}, got, "both are best bases, newest first")
+}
