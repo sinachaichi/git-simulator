@@ -142,17 +142,6 @@ func threeWay(r *repo.Repo, head refs.Head, rev string, opts MergeOptions, res M
 	}
 	res.Base = bases[0] // for criss-cross histories git merges the bases first, we use the newest
 
-	ix, err := r.LoadIndex()
-	if err != nil {
-		return res, err
-	}
-	ours, err := commitFiles(r, head.ID)
-	if err != nil {
-		return res, err
-	}
-	if staged := stagedPaths(ix, ours); len(staged) > 0 {
-		return res, &LocalChangesError{Paths: staged}
-	}
 	baseFiles, err := flatFiles(r, res.Base)
 	if err != nil {
 		return res, err
@@ -161,44 +150,11 @@ func threeWay(r *repo.Repo, head refs.Head, rev string, opts MergeOptions, res M
 	if err != nil {
 		return res, err
 	}
-	merged, err := merge.Trees(r.ODB, baseFiles, filesOf(ours), theirFiles, merge.Labels{Ours: "HEAD", Theirs: rev})
+	conflicts, files, err := applyMerge(r, head, baseFiles, theirFiles, merge.Labels{Ours: "HEAD", Theirs: rev})
 	if err != nil {
 		return res, err
 	}
-
-	mergedMap := make(map[string]tree.File, len(merged.Files))
-	for _, f := range merged.Files {
-		mergedMap[f.Path] = f
-	}
-	changed := differingPaths(ours, mergedMap)
-	check := map[string]tree.File{}
-	for p, f := range mergedMap {
-		check[p] = f
-	}
-	for _, c := range merged.Conflicts {
-		check[c.Path] = tree.File{Path: c.Path, Mode: c.Mode}
-		changed = appendMissing(changed, c.Path)
-	}
-	sort.Strings(changed)
-	if err := checkLocalChanges(r, ix, ours, check, changed); err != nil {
-		return res, err
-	}
-
-	// Everything is checked, now write. Conflicted paths are handled
-	// after the clean ones, so their markers are not overwritten.
-	if err := syncPaths(r, ix, mergedMap, changed); err != nil {
-		return res, err
-	}
-	for _, c := range merged.Conflicts {
-		if err := writeConflict(r, ix, c); err != nil {
-			return res, err
-		}
-		res.Conflicts = append(res.Conflicts, ConflictInfo{Path: c.Path, Kind: c.Kind, HasOurs: c.Ours != nil, HasTheirs: c.Theirs != nil})
-	}
-	if err := r.SaveIndex(ix); err != nil {
-		return res, err
-	}
-	res.Files = len(changed)
+	res.Conflicts, res.Files = conflicts, files
 
 	message := opts.Message
 	if message == "" {
@@ -226,6 +182,60 @@ func threeWay(r *repo.Repo, head refs.Head, rev string, opts MergeOptions, res M
 		res.Outcome, res.Commit = MergeCommitted, commit.ID
 	}
 	return res, nil
+}
+
+// applyMerge merges the files of a base and of another commit into HEAD's
+// working tree and index. It checks for local changes first and then
+// writes clean results and conflicts (markers in the files, stages in the
+// index). It returns the conflicts and how many paths changed.
+func applyMerge(r *repo.Repo, head refs.Head, baseFiles, theirFiles []tree.File, labels merge.Labels) ([]ConflictInfo, int, error) {
+	ix, err := r.LoadIndex()
+	if err != nil {
+		return nil, 0, err
+	}
+	ours, err := commitFiles(r, head.ID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if staged := stagedPaths(ix, ours); len(staged) > 0 {
+		return nil, 0, &LocalChangesError{Paths: staged}
+	}
+	merged, err := merge.Trees(r.ODB, baseFiles, filesOf(ours), theirFiles, labels)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	mergedMap := make(map[string]tree.File, len(merged.Files))
+	for _, f := range merged.Files {
+		mergedMap[f.Path] = f
+	}
+	changed := differingPaths(ours, mergedMap)
+	check := map[string]tree.File{}
+	for p, f := range mergedMap {
+		check[p] = f
+	}
+	for _, c := range merged.Conflicts {
+		check[c.Path] = tree.File{Path: c.Path, Mode: c.Mode}
+		changed = appendMissing(changed, c.Path)
+	}
+	sort.Strings(changed)
+	if err := checkLocalChanges(r, ix, ours, check, changed); err != nil {
+		return nil, 0, err
+	}
+
+	// Everything is checked, now write. Conflicted paths are handled
+	// after the clean ones, so their markers are not overwritten.
+	if err := syncPaths(r, ix, mergedMap, changed); err != nil {
+		return nil, 0, err
+	}
+	var conflicts []ConflictInfo
+	for _, c := range merged.Conflicts {
+		if err := writeConflict(r, ix, c); err != nil {
+			return nil, 0, err
+		}
+		conflicts = append(conflicts, ConflictInfo{Path: c.Path, Kind: c.Kind, HasOurs: c.Ours != nil, HasTheirs: c.Theirs != nil})
+	}
+	return conflicts, len(changed), r.SaveIndex(ix)
 }
 
 // writeConflict puts the conflict markers in the working tree and the
