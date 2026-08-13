@@ -616,3 +616,53 @@ func TestModifyDeleteConflictMessage(t *testing.T) {
 	assert.Contains(t, out, "CONFLICT (modify/delete): a deleted in HEAD and modified in side. Version side of a left in tree.")
 	assert.Contains(t, s.ok("status"), "deleted by us:   a")
 }
+
+func TestCherryPickAndRevertCommands(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "base")
+	s.ok("switch", "-c", "feature")
+	s.write("picked", "p\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "add picked")
+	s.ok("switch", "main")
+
+	out := s.ok("cherry-pick", "feature")
+	assert.Regexp(t, `^\[main [0-9a-f]{7}\] add picked\n$`, out)
+	assert.FileExists(t, filepath.Join(s.dir, "picked"))
+
+	out = s.ok("revert", "HEAD")
+	assert.Regexp(t, `^\[main [0-9a-f]{7}\] Revert "add picked"\n$`, out)
+	assert.NoFileExists(t, filepath.Join(s.dir, "picked"))
+
+	_, errOut, code := s.run("cherry-pick")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "cherry-pick needs one commit")
+	_, errOut, code = s.run("revert", "--continue")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "no cherry-pick or revert in progress")
+}
+
+func TestRevertConflictContinueAndAbort(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	for _, v := range []string{"1", "2", "3"} {
+		s.write("a", v+"\n")
+		s.ok("add", ".")
+		s.ok("commit", "-m", "v"+v)
+	}
+	out, _, code := s.run("revert", "HEAD~1")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, out, "CONFLICT (content): Merge conflict in a")
+	assert.Contains(t, out, "revert --continue")
+	s.ok("revert", "--abort")
+	assert.Contains(t, s.ok("status"), "nothing to commit, working tree clean")
+
+	_, _, code = s.run("revert", "HEAD~1")
+	assert.Equal(t, 1, code)
+	s.write("a", "resolved\n")
+	s.ok("add", "a")
+	assert.Regexp(t, `^\[main [0-9a-f]{7}\] Revert "v2"\n$`, s.ok("revert", "--continue"))
+}

@@ -126,10 +126,10 @@ func resetIndexAndFiles(r *repo.Repo, target objects.ID, hard bool) error {
 	return r.SaveIndex(ix)
 }
 
-// clearMergeState forgets an unfinished merge. A reset ends it, which is
-// also how `merge --abort` is done.
+// clearMergeState forgets an unfinished merge, cherry-pick or revert. A
+// reset ends it, which is also how the abort commands work.
 func clearMergeState(r *repo.Repo) {
-	for _, name := range []string{"MERGE_HEAD", "MERGE_MSG"} {
+	for _, name := range []string{mergeHeadFile, mergeMsgFile, cherryPickHeadFile, revertHeadFile} {
 		_ = os.Remove(filepath.Join(r.GitDir, name))
 	}
 }

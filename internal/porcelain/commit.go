@@ -3,6 +3,9 @@ package porcelain
 import (
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/sinachaichi/git-simulator/internal/index"
@@ -62,8 +65,19 @@ func Commit(r *repo.Repo, opts CommitOptions) (CommitResult, error) {
 	if err != nil {
 		return CommitResult{}, err
 	}
-	if merging && opts.Amend {
-		return CommitResult{}, errors.New("cannot amend while a merge is in progress")
+	pickID, _, picking, err := readPickState(r)
+	if err != nil {
+		return CommitResult{}, err
+	}
+	if (merging || picking) && opts.Amend {
+		return CommitResult{}, errors.New("cannot amend while a merge, cherry-pick or revert is in progress")
+	}
+	if picking && mergeMessage == "" {
+		data, err := os.ReadFile(filepath.Join(r.GitDir, mergeMsgFile))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return CommitResult{}, err
+		}
+		mergeMessage = string(data)
 	}
 
 	var parents []objects.ID
@@ -94,7 +108,7 @@ func Commit(r *repo.Repo, opts CommitOptions) (CommitResult, error) {
 	if message == "" && opts.Amend {
 		message = old.Message
 	}
-	if message == "" && merging {
+	if message == "" && (merging || picking) {
 		message = mergeMessage
 	}
 	if message == "" {
@@ -105,10 +119,20 @@ func Commit(r *repo.Repo, opts CommitOptions) (CommitResult, error) {
 		return CommitResult{}, err
 	}
 	var author objects.Signature
-	if opts.Amend {
+	switch {
+	case opts.Amend:
 		author = old.Author
-	} else if author, err = r.Identity("author"); err != nil {
-		return CommitResult{}, err
+	case picking && !isRevert(r):
+		// A cherry-picked commit keeps its author.
+		picked, err := r.ODB.ReadCommit(pickID)
+		if err != nil {
+			return CommitResult{}, err
+		}
+		author = picked.Author
+	default:
+		if author, err = r.Identity("author"); err != nil {
+			return CommitResult{}, err
+		}
 	}
 
 	c := &objects.Commit{Tree: treeID, Parents: parents, Author: author, Committer: committer, Message: message}
@@ -132,7 +156,7 @@ func Commit(r *repo.Repo, opts CommitOptions) (CommitResult, error) {
 	if err := moveHead(r, id, logMessage); err != nil {
 		return CommitResult{}, err
 	}
-	if merging {
+	if merging || picking {
 		clearMergeState(r)
 	}
 	return CommitResult{ID: id, Commit: c, Branch: head.Branch(), Root: len(parents) == 0, Amended: opts.Amend}, nil

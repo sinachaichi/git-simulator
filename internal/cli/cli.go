@@ -43,6 +43,8 @@ func commandTable() []command {
 		{"add", "stage files", "add <path>...", cmdAdd},
 		{"reset", "move HEAD, or unstage files", "reset [--soft|--mixed|--hard] [<rev>] | reset [<rev>] [--] <path>...", cmdReset},
 		{"merge", "join another branch into the current one", "merge [--no-ff|--ff-only] [--no-commit] [-m <message>] <branch> | merge --abort", cmdMerge},
+		{"cherry-pick", "apply the change of an existing commit", "cherry-pick [-n] <commit> | cherry-pick --continue | cherry-pick --abort", cmdCherryPick},
+		{"revert", "make a new commit that undoes an earlier one", "revert [-n] <commit> | revert --continue | revert --abort", cmdRevert},
 		{"rm", "remove files from the index and the working tree", "rm [--cached] [-f] [-r] <path>...", cmdRm},
 		{"commit", "record the staged changes", "commit -m <message> [-a] [--amend] [--allow-empty]", cmdCommit},
 		{"status", "show the state of the working tree and index", "status", cmdStatus},
