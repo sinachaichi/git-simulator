@@ -95,3 +95,24 @@ func TestMoveAndDeleteLog(t *testing.T) {
 	assert.NoError(t, s.DeleteLog("refs/heads/feat/new"), "deleting a missing log is fine")
 	assert.NoError(t, s.MoveLog("refs/heads/none", "refs/heads/x"))
 }
+
+func TestReplaceLog(t *testing.T) {
+	s := newStore(t)
+	for i, msg := range []string{"one", "two", "three"} {
+		require.NoError(t, s.AppendLog("refs/stash", refs.LogEntry{New: id(msg), Who: who(int64(i + 1)), Message: msg}))
+	}
+	entries, err := s.ReadLog("refs/stash")
+	require.NoError(t, err)
+
+	require.NoError(t, s.ReplaceLog("refs/stash", append(entries[:1:1], entries[2:]...)))
+	got, err := s.ReadLog("refs/stash")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "three", got[0].Message)
+	assert.Equal(t, "one", got[1].Message)
+
+	require.NoError(t, s.ReplaceLog("refs/stash", nil))
+	got, err = s.ReadLog("refs/stash")
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
