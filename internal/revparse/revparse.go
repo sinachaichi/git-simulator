@@ -136,7 +136,11 @@ func resolveReflog(r *repo.Repo, name, n, full string) (objects.ID, error) {
 		return objects.Zero, fmt.Errorf("bad reflog index in %q, only @{N} is supported", full)
 	}
 	logName := "HEAD"
-	if name != "" && name != "HEAD" {
+	switch name {
+	case "", "HEAD":
+	case "stash":
+		logName = "refs/stash"
+	default:
 		logName = refs.BranchPrefix + name
 	}
 	entries, err := r.Refs.ReadLog(logName)
