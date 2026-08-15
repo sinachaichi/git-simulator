@@ -188,3 +188,19 @@ func TestAmbiguousShortID(t *testing.T) {
 		seen[id.String()[:4]] = true
 	}
 }
+
+func TestResolveStashEntries(t *testing.T) {
+	f := newFixture(t)
+	who := objects.Signature{Name: "A", Email: "a@b.c", When: time.Unix(1, 0).In(time.UTC)}
+	require.NoError(t, f.r.Refs.AppendLog("refs/stash", refs.LogEntry{New: f.c1, Who: who, Message: "old"}))
+	require.NoError(t, f.r.Refs.AppendLog("refs/stash", refs.LogEntry{Old: f.c1, New: f.c2, Who: who, Message: "new"}))
+
+	got, err := revparse.Resolve(f.r, "stash@{0}")
+	require.NoError(t, err)
+	assert.Equal(t, f.c2, got)
+	got, err = revparse.Resolve(f.r, "stash@{1}")
+	require.NoError(t, err)
+	assert.Equal(t, f.c1, got)
+	_, err = revparse.Resolve(f.r, "stash@{2}")
+	assert.ErrorContains(t, err, "refs/stash has only 2 reflog entries")
+}

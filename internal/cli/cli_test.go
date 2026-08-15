@@ -666,3 +666,43 @@ func TestRevertConflictContinueAndAbort(t *testing.T) {
 	s.ok("add", "a")
 	assert.Regexp(t, `^\[main [0-9a-f]{7}\] Revert "v2"\n$`, s.ok("revert", "--continue"))
 }
+
+func TestStashCommands(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "base")
+
+	_, errOut, code := s.run("stash")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "no local changes to save")
+
+	s.write("a", "2\n")
+	assert.Regexp(t, `^Saved working directory and index state WIP on main: [0-9a-f]{7} base\n$`, s.ok("stash"))
+	assert.Contains(t, s.ok("status"), "nothing to commit, working tree clean")
+	assert.Regexp(t, `^stash@\{0\}: WIP on main: [0-9a-f]{7} base\n$`, s.ok("stash", "list"))
+	assert.Contains(t, s.ok("stash", "show"), "-1\n+2\n")
+	assert.Contains(t, s.ok("diff", "HEAD", "stash@{0}"), "-1\n+2\n")
+
+	out := s.ok("stash", "apply")
+	assert.Contains(t, out, "\tmodified:   a")
+	s.ok("reset", "--hard")
+	out = s.ok("stash", "pop")
+	assert.Regexp(t, `Dropped stash@\{0\} \([0-9a-f]{40}\)\n$`, out)
+	assert.Empty(t, s.ok("stash", "list"))
+
+	s.write("a", "3\n")
+	s.ok("stash", "push", "-m", "wip three")
+	assert.Equal(t, "stash@{0}: On main: wip three\n", s.ok("stash", "list"))
+	assert.Regexp(t, `^Dropped stash@\{0\} \(`, s.ok("stash", "drop"))
+
+	_, errOut, code = s.run("stash", "frobnicate")
+	assert.Equal(t, 2, code)
+	assert.Contains(t, errOut, "unknown stash command")
+	_, _, code = s.run("stash", "pop", "nope")
+	assert.Equal(t, 2, code)
+	_, errOut, code = s.run("stash", "pop")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "no stash entry found")
+}

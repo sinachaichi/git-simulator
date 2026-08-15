@@ -112,3 +112,21 @@ func (s *Store) DeleteLog(name string) error {
 	}
 	return nil
 }
+
+// ReplaceLog overwrites the reflog of a ref with entries, newest first.
+// An empty list removes the log. Stash uses it to drop one entry.
+func (s *Store) ReplaceLog(name string, entries []LogEntry) error {
+	if len(entries) == 0 {
+		return s.DeleteLog(name)
+	}
+	p := s.logPath(name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	var b strings.Builder
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		fmt.Fprintf(&b, "%s %s %s\t%s\n", e.Old, e.New, e.Who, strings.ReplaceAll(e.Message, "\n", " "))
+	}
+	return os.WriteFile(p, []byte(b.String()), 0o644)
+}
