@@ -46,6 +46,7 @@ func commandTable() []command {
 		{"cherry-pick", "apply the change of an existing commit", "cherry-pick [-n] <commit> | cherry-pick --continue | cherry-pick --abort", cmdCherryPick},
 		{"revert", "make a new commit that undoes an earlier one", "revert [-n] <commit> | revert --continue | revert --abort", cmdRevert},
 		{"stash", "put local changes aside", "stash [push [-m <message>]] | stash list | stash show|apply|pop|drop [stash@{<n>}]", cmdStash},
+		{"reflog", "show where HEAD and branches used to point", "reflog [show] [<ref>]", cmdReflog},
 		{"rm", "remove files from the index and the working tree", "rm [--cached] [-f] [-r] <path>...", cmdRm},
 		{"commit", "record the staged changes", "commit -m <message> [-a] [--amend] [--allow-empty]", cmdCommit},
 		{"status", "show the state of the working tree and index", "status", cmdStatus},

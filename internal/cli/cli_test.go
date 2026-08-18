@@ -706,3 +706,53 @@ func TestStashCommands(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errOut, "no stash entry found")
 }
+
+func TestReflogCommandAndRecovery(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	for _, v := range []string{"one", "two", "three"} {
+		s.write("f", v+"\n")
+		s.ok("add", ".")
+		s.ok("commit", "-m", v)
+	}
+	s.ok("reset", "--hard", "HEAD~2")
+
+	lines := strings.Split(strings.TrimSpace(s.ok("reflog")), "\n")
+	require.Len(t, lines, 4)
+	assert.Regexp(t, `^[0-9a-f]{7} HEAD@\{0\}: reset: moving to HEAD~2$`, lines[0])
+	assert.Regexp(t, `^[0-9a-f]{7} HEAD@\{1\}: commit: three$`, lines[1])
+	assert.Regexp(t, `^[0-9a-f]{7} HEAD@\{3\}: commit \(initial\): one$`, lines[3])
+	assert.Equal(t, s.ok("reflog"), s.ok("reflog", "show", "HEAD"))
+	assert.Contains(t, s.ok("reflog", "main"), "main@{1}: commit: three")
+
+	s.ok("reset", "--hard", "HEAD@{1}")
+	data, _ := os.ReadFile(filepath.Join(s.dir, "f"))
+	assert.Equal(t, "three\n", string(data))
+
+	_, errOut, code := s.run("reflog", "ghost")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "branch not found")
+}
+
+func TestRealGitReadsOurReflog(t *testing.T) {
+	testutil.RequireGit(t)
+	s := newSession(t)
+	s.ok("init")
+	s.write("f", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+	s.ok("switch", "-c", "topic")
+	s.write("f", "2\n")
+	s.ok("commit", "-am", "two")
+	s.ok("reset", "--hard", "HEAD~1")
+
+	git := func(args ...string) string {
+		return testutil.Git(t, s.dir, "", append([]string{"--git-dir=" + filepath.Join(s.dir, ".hood")}, args...)...)
+	}
+	ourLines := strings.Split(strings.TrimSpace(s.ok("reflog")), "\n")
+	realLines := strings.Split(strings.TrimSpace(git("reflog", "--no-abbrev-commit", "--format=%h %gd: %gs")), "\n")
+	require.Len(t, realLines, len(ourLines))
+	for i := range ourLines {
+		assert.Equal(t, ourLines[i][8:], realLines[i][8:], "line %d", i)
+	}
+}
