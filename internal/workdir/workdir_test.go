@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/sinachaichi/git-simulator/internal/events"
 	"github.com/sinachaichi/git-simulator/internal/testutil"
 	"github.com/sinachaichi/git-simulator/internal/workdir"
 )
@@ -108,4 +109,21 @@ func TestNewRejectsFile(t *testing.T) {
 	wd := newTree(t)
 	_, err := workdir.New(wd.Root + "/README.md")
 	assert.Error(t, err)
+}
+
+type collector struct{ got []events.Event }
+
+func (c *collector) Emit(e events.Event) { c.got = append(c.got, e) }
+
+func TestFileChangesAreReported(t *testing.T) {
+	wd := newTree(t)
+	c := &collector{}
+	wd.Observer = c
+	require.NoError(t, wd.WriteFile("new/file.txt", []byte("abc"), 0o644))
+	require.NoError(t, wd.Remove("new/file.txt"))
+
+	assert.Equal(t, []events.Event{
+		{Kind: events.FileWritten, Subject: "new/file.txt", Detail: "3 bytes"},
+		{Kind: events.FileRemoved, Subject: "new/file.txt"},
+	}, c.got)
 }

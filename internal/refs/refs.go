@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sinachaichi/git-simulator/internal/events"
 	"github.com/sinachaichi/git-simulator/internal/objects"
 )
 
@@ -32,6 +33,14 @@ type Ref struct {
 // Store reads and writes refs below Dir (usually ".hood").
 type Store struct {
 	Dir string
+	// Observer, when set, hears about every change.
+	Observer events.Sink
+}
+
+func (s *Store) emit(e events.Event) {
+	if s.Observer != nil {
+		s.Observer.Emit(e)
+	}
 }
 
 // ValidName checks a full ref name such as "refs/heads/feat/x" against
@@ -98,7 +107,12 @@ func (s *Store) Update(name string, id objects.ID) error {
 	if err := ValidName(name); err != nil {
 		return err
 	}
-	return s.writeFile(name, id.String()+"\n")
+	old, _ := s.Read(name)
+	if err := s.writeFile(name, id.String()+"\n"); err != nil {
+		return err
+	}
+	s.emit(events.Event{Kind: events.RefUpdated, Subject: name, Old: old.String(), New: id.String()})
+	return nil
 }
 
 func (s *Store) writeFile(name, content string) error {
@@ -124,6 +138,7 @@ func (s *Store) writeFile(name, content string) error {
 
 // Delete removes a ref and any directories it leaves empty.
 func (s *Store) Delete(name string) error {
+	old, _ := s.Read(name)
 	err := os.Remove(s.path(name))
 	if errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("%w: %s", ErrNotFound, name)
@@ -131,6 +146,7 @@ func (s *Store) Delete(name string) error {
 	if err != nil {
 		return err
 	}
+	s.emit(events.Event{Kind: events.RefDeleted, Subject: name, Old: old.String()})
 	for dir := filepath.Dir(s.path(name)); dir != s.Dir; dir = filepath.Dir(dir) {
 		if os.Remove(dir) != nil {
 			break

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sinachaichi/git-simulator/internal/events"
 	"github.com/sinachaichi/git-simulator/internal/objects"
 )
 
@@ -36,7 +37,11 @@ func (s *Store) AppendLog(name string, e LogEntry) error {
 	}
 	msg := strings.ReplaceAll(e.Message, "\n", " ")
 	_, err = fmt.Fprintf(f, "%s %s %s\t%s\n", e.Old, e.New, e.Who, msg)
-	return errors.Join(err, f.Close())
+	if err = errors.Join(err, f.Close()); err != nil {
+		return err
+	}
+	s.emit(events.Event{Kind: events.ReflogAppended, Subject: name, Old: e.Old.String(), New: e.New.String(), Detail: msg})
+	return nil
 }
 
 // ReadLog returns the reflog of a ref, newest entry first. A ref without

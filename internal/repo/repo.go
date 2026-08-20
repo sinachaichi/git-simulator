@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/sinachaichi/git-simulator/internal/events"
 	"github.com/sinachaichi/git-simulator/internal/index"
 	"github.com/sinachaichi/git-simulator/internal/odb"
 	"github.com/sinachaichi/git-simulator/internal/refs"
@@ -32,6 +33,8 @@ type Repo struct {
 	Work   *workdir.WorkDir
 	ODB    *odb.Store
 	Refs   *refs.Store
+
+	observer events.Sink
 }
 
 // Init creates a repository in dir. It refuses to run inside a real git
@@ -121,11 +124,37 @@ func findUp(start, name string) string {
 	}
 }
 
+// SetObserver makes every layer of the repo report to sink. Pass nil to
+// stop listening.
+func (r *Repo) SetObserver(sink events.Sink) {
+	r.observer = sink
+	r.ODB.Observer = sink
+	r.Refs.Observer = sink
+	r.Work.Observer = sink
+}
+
+// Emit reports an event to the observer, if there is one.
+func (r *Repo) Emit(e events.Event) {
+	if r.observer != nil {
+		r.observer.Emit(e)
+	}
+}
+
 // IndexPath is where the staging area is stored.
 func (r *Repo) IndexPath() string { return filepath.Join(r.GitDir, "index") }
 
 // LoadIndex reads the staging area.
 func (r *Repo) LoadIndex() (*index.Index, error) { return index.Load(r.IndexPath()) }
 
-// SaveIndex writes the staging area.
-func (r *Repo) SaveIndex(ix *index.Index) error { return ix.Save(r.IndexPath()) }
+// SaveIndex writes the staging area. When someone is listening, it first
+// compares with the file on disk and reports what changed.
+func (r *Repo) SaveIndex(ix *index.Index) error {
+	if r.observer != nil {
+		if old, err := r.LoadIndex(); err == nil {
+			for _, e := range index.Diff(old, ix) {
+				r.observer.Emit(e)
+			}
+		}
+	}
+	return ix.Save(r.IndexPath())
+}

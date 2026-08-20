@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sinachaichi/git-simulator/internal/events"
 	"github.com/sinachaichi/git-simulator/internal/objects"
 )
 
@@ -32,6 +33,8 @@ func (e *AmbiguousError) Error() string {
 // Store reads and writes objects below Dir (usually ".hood/objects").
 type Store struct {
 	Dir string
+	// Observer, when set, hears about every write.
+	Observer events.Sink
 }
 
 // New returns a Store and makes sure the directory exists.
@@ -40,6 +43,12 @@ func New(dir string) (*Store, error) {
 		return nil, err
 	}
 	return &Store{Dir: dir}, nil
+}
+
+func (s *Store) emit(e events.Event) {
+	if s.Observer != nil {
+		s.Observer.Emit(e)
+	}
 }
 
 func (s *Store) path(id objects.ID) string {
@@ -57,7 +66,9 @@ func (s *Store) Has(id objects.ID) bool {
 // object was already there, which is how git deduplicates content.
 func (s *Store) Write(o objects.Object) (id objects.ID, created bool, err error) {
 	id = objects.HashOf(o)
+	detail := fmt.Sprintf("%s %d bytes", o.Type(), len(o.Body()))
 	if s.Has(id) {
+		s.emit(events.Event{Kind: events.ObjectExists, Subject: id.String(), Detail: detail})
 		return id, false, nil
 	}
 	var buf bytes.Buffer
@@ -88,6 +99,7 @@ func (s *Store) Write(o objects.Object) (id objects.ID, created bool, err error)
 	if err != nil {
 		return id, false, errors.Join(err, os.Remove(tmp.Name()))
 	}
+	s.emit(events.Event{Kind: events.ObjectWritten, Subject: id.String(), Detail: detail})
 	return id, true, nil
 }
 

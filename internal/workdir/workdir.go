@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/sinachaichi/git-simulator/internal/events"
 )
 
 // MetaDir is the name of the directory that holds the simulated repository
@@ -20,6 +22,14 @@ const MetaDir = ".hood"
 // WorkDir is a directory on disk that acts as a working tree.
 type WorkDir struct {
 	Root string
+	// Observer, when set, hears about files written or removed.
+	Observer events.Sink
+}
+
+func (w *WorkDir) emit(e events.Event) {
+	if w.Observer != nil {
+		w.Observer.Emit(e)
+	}
 }
 
 // New returns a WorkDir for root. The directory must already exist.
@@ -72,7 +82,11 @@ func (w *WorkDir) WriteFile(rel string, data []byte, mode fs.FileMode) error {
 	if err := os.WriteFile(p, data, mode); err != nil {
 		return err
 	}
-	return os.Chmod(p, mode)
+	if err := os.Chmod(p, mode); err != nil {
+		return err
+	}
+	w.emit(events.Event{Kind: events.FileWritten, Subject: path.Clean(rel), Detail: fmt.Sprintf("%d bytes", len(data))})
+	return nil
 }
 
 // AppendFile adds data to the end of an existing file.
@@ -98,6 +112,7 @@ func (w *WorkDir) Remove(rel string) error {
 	if err := os.Remove(p); err != nil {
 		return err
 	}
+	w.emit(events.Event{Kind: events.FileRemoved, Subject: path.Clean(rel)})
 	for dir := filepath.Dir(p); dir != w.Root; dir = filepath.Dir(dir) {
 		if os.Remove(dir) != nil {
 			break
