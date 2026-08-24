@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sinachaichi/git-simulator/internal/events"
 	"github.com/sinachaichi/git-simulator/internal/porcelain"
 	"github.com/sinachaichi/git-simulator/internal/repo"
 )
@@ -33,6 +34,10 @@ func cmdInit(c *Context, args []string) error {
 		return err
 	}
 	fmt.Fprintf(c.Stdout, "Initialized empty hood repository in %s/\n", r.GitDir)
+	if c.Xray {
+		c.recorder.Emit(events.Event{Kind: events.HeadSet, Subject: "HEAD", New: "refs/heads/" + *branch, Detail: "symbolic"})
+		c.recorder.Emit(events.Event{Kind: events.StateWritten, Subject: "config", Detail: "core.repositoryformatversion = 0"})
+	}
 	return nil
 }
 
