@@ -11,8 +11,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sinachaichi/git-simulator/internal/events"
 	"github.com/sinachaichi/git-simulator/internal/repo"
 	"github.com/sinachaichi/git-simulator/internal/term"
+	"github.com/sinachaichi/git-simulator/internal/xray"
 )
 
 // Env is everything a run needs from the outside world. Tests pass
@@ -28,6 +30,10 @@ type Env struct {
 type Context struct {
 	Env
 	Style term.Style
+
+	// Xray turns on the summary of internal changes after each command.
+	Xray     bool
+	recorder events.Recorder
 }
 
 type command struct {
@@ -76,10 +82,17 @@ func findCommand(name string) (command, bool) {
 // Run executes one command line and returns the exit code.
 func Run(args []string, env Env, version string) int {
 	var noColor bool
+	xrayOn := os.Getenv("HOOD_XRAY") != "" && os.Getenv("HOOD_XRAY") != "0"
 	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
 		switch args[0] {
 		case "--no-color":
 			noColor = true
+			args = args[1:]
+		case "--xray":
+			xrayOn = true
+			args = args[1:]
+		case "--no-xray":
+			xrayOn = false
 			args = args[1:]
 		case "-C":
 			if len(args) < 2 {
@@ -106,14 +119,16 @@ func Run(args []string, env Env, version string) int {
 	if env.Cwd == "" {
 		env.Cwd, _ = os.Getwd()
 	}
-	ctx := &Context{Env: env, Style: term.Detect(env.Stdout, noColor)}
+	ctx := &Context{Env: env, Style: term.Detect(env.Stdout, noColor), Xray: xrayOn}
 
 	cmd, ok := findCommand(args[0])
 	if !ok {
 		fmt.Fprintf(env.Stderr, "error: %q is not a command. Run `hood --help` to see the list.\n", args[0])
 		return 2
 	}
-	if err := cmd.run(ctx, args[1:]); err != nil {
+	err := cmd.run(ctx, args[1:])
+	ctx.printXray()
+	if err != nil {
 		if errors.Is(err, errConflicts) {
 			return 1
 		}
@@ -131,7 +146,7 @@ func Run(args []string, env Env, version string) int {
 func printHelp(w io.Writer) {
 	fmt.Fprintln(w, "hood: a tiny git simulator that shows what happens under the hood")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "usage: hood [-C <dir>] [--no-color] <command> [<args>]")
+	fmt.Fprintln(w, "usage: hood [-C <dir>] [--no-color] [--xray] <command> [<args>]")
 	fmt.Fprintln(w)
 	cmds := commandTable()
 	sort.Slice(cmds, func(i, j int) bool { return cmds[i].name < cmds[j].name })
@@ -146,7 +161,20 @@ func (c *Context) openRepo() (*repo.Repo, error) {
 	if errors.Is(err, repo.ErrNotARepo) {
 		return nil, errors.New("not inside a hood repository. Run `hood init` first")
 	}
+	if err == nil && c.Xray {
+		r.SetObserver(&c.recorder)
+	}
 	return r, err
+}
+
+// printXray shows what the command did inside the repository, when
+// X-ray mode is on.
+func (c *Context) printXray() {
+	if !c.Xray {
+		return
+	}
+	xray.Render(c.Stdout, c.Style, c.recorder.Events())
+	c.recorder.Reset()
 }
 
 // repoPath turns a path given on the command line (relative to the

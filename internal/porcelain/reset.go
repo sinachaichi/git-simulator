@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
+	"github.com/sinachaichi/git-simulator/internal/events"
 	"github.com/sinachaichi/git-simulator/internal/index"
 	"github.com/sinachaichi/git-simulator/internal/objects"
 	"github.com/sinachaichi/git-simulator/internal/repo"
@@ -130,12 +132,18 @@ func resetIndexAndFiles(r *repo.Repo, target objects.ID, hard bool) error {
 // reset ends it, which is also how the abort commands work.
 func clearMergeState(r *repo.Repo) {
 	for _, name := range []string{mergeHeadFile, mergeMsgFile, cherryPickHeadFile, revertHeadFile} {
-		_ = os.Remove(filepath.Join(r.GitDir, name))
+		if os.Remove(filepath.Join(r.GitDir, name)) == nil {
+			r.Emit(events.Event{Kind: events.StateRemoved, Subject: name})
+		}
 	}
 }
 
 func writeState(r *repo.Repo, name, content string) error {
-	return os.WriteFile(filepath.Join(r.GitDir, name), []byte(content), 0o644)
+	if err := os.WriteFile(filepath.Join(r.GitDir, name), []byte(content), 0o644); err != nil {
+		return err
+	}
+	r.Emit(events.Event{Kind: events.StateWritten, Subject: name, Detail: strings.TrimSpace(content)})
+	return nil
 }
 
 // ResetPaths makes the index entries for the given paths match rev

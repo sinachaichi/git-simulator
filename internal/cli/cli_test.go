@@ -756,3 +756,102 @@ func TestRealGitReadsOurReflog(t *testing.T) {
 		assert.Equal(t, ourLines[i][8:], realLines[i][8:], "line %d", i)
 	}
 }
+
+func TestXrayShowsWhatACommitDid(t *testing.T) {
+	s := newSession(t)
+	s.ok("--xray", "init")
+	s.write("hello.txt", "hello\n")
+
+	out := s.ok("--xray", "add", "hello.txt")
+	assert.Contains(t, out, "x-ray\n  objects\n    + blob   ce01362  6 bytes\n")
+	assert.Contains(t, out, "  index\n    + hello.txt  100644 ce01362\n")
+
+	out = s.ok("--xray", "commit", "-m", "first commit")
+	assert.Contains(t, out, "    + tree   ")
+	assert.Contains(t, out, "    + commit ")
+	assert.Contains(t, out, "    refs/heads/main  0000000 -> ")
+	assert.Contains(t, out, "    reflog HEAD: commit (initial): first commit\n")
+	assert.NotContains(t, out, "working tree", "a commit does not touch files")
+
+	// Adding the same content again stores nothing new.
+	s.write("copy.txt", "hello\n")
+	out = s.ok("--xray", "add", "copy.txt")
+	assert.Contains(t, out, "    = blob   ce01362  already stored, nothing written\n")
+	assert.NotContains(t, out, "    + blob")
+}
+
+func TestXrayIsOffByDefaultAndCanBeSetByEnvironment(t *testing.T) {
+	s := newSession(t)
+	assert.NotContains(t, s.ok("init"), "x-ray")
+	s.write("a", "1\n")
+	assert.NotContains(t, s.ok("add", "a"), "x-ray")
+
+	t.Setenv("HOOD_XRAY", "1")
+	s.write("b", "2\n")
+	assert.Contains(t, s.ok("add", "b"), "x-ray")
+	assert.NotContains(t, s.ok("--no-xray", "status"), "x-ray")
+}
+
+func TestXrayInitShowsHeadAndConfig(t *testing.T) {
+	s := newSession(t)
+	out := s.ok("--xray", "init")
+	assert.Contains(t, out, "    HEAD -> refs/heads/main\n")
+	assert.Contains(t, out, "    config written  core.repositoryformatversion = 0\n")
+}
+
+func TestXraySwitchShowsFilesAndHead(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+	s.ok("switch", "-c", "topic")
+	s.write("a", "2\n")
+	s.ok("commit", "-am", "two")
+
+	out := s.ok("--xray", "switch", "main")
+	assert.Contains(t, out, "  working tree\n    + wrote a  2 bytes\n")
+	assert.Contains(t, out, "    ~ a  ")
+	assert.Contains(t, out, "    HEAD -> refs/heads/main\n")
+	assert.Contains(t, out, "    reflog HEAD: checkout: moving from topic to main\n")
+}
+
+func TestXrayShowsMergeState(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "base")
+	s.ok("switch", "-c", "side")
+	s.write("a", "side\n")
+	s.ok("commit", "-am", "side")
+	s.ok("switch", "main")
+	s.write("a", "main\n")
+	s.ok("commit", "-am", "main")
+
+	out, _, _ := s.run("--xray", "merge", "side")
+	assert.Contains(t, out, "    ! a  stage 1 (base), stage 2 (ours), stage 3 (theirs)\n")
+	assert.Contains(t, out, "    MERGE_HEAD written  ")
+	assert.Contains(t, out, "    MERGE_MSG written  Merge branch 'side'\n")
+
+	s.write("a", "both\n")
+	s.ok("add", "a")
+	out = s.ok("--xray", "commit")
+	assert.Contains(t, out, "    MERGE_HEAD removed\n")
+	assert.Contains(t, out, "    reflog HEAD: commit (merge): Merge branch 'side'\n")
+}
+
+func TestXrayStaysQuietWhenACommandIsRefused(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.write("a", "1\n")
+	s.ok("add", ".")
+	s.ok("commit", "-m", "one")
+	s.ok("switch", "-c", "topic")
+	s.write("a", "2\n")
+	s.ok("commit", "-am", "two")
+	s.write("a", "dirty\n")
+	out, _, code := s.run("--xray", "switch", "main")
+	assert.Equal(t, 1, code)
+	assert.NotContains(t, out, "x-ray", "a refused switch changed nothing")
+}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/sinachaichi/git-simulator/internal/events"
 	"github.com/sinachaichi/git-simulator/internal/objects"
 )
 
@@ -35,12 +36,20 @@ func (s *Store) SetHeadBranch(branch string) error {
 	if err := ValidName(name); err != nil {
 		return err
 	}
-	return s.writeFile(headFile, "ref: "+name+"\n")
+	if err := s.writeFile(headFile, "ref: "+name+"\n"); err != nil {
+		return err
+	}
+	s.emit(events.Event{Kind: events.HeadSet, Subject: headFile, New: name, Detail: "symbolic"})
+	return nil
 }
 
 // SetHeadDetached makes HEAD point straight at a commit.
 func (s *Store) SetHeadDetached(id objects.ID) error {
-	return s.writeFile(headFile, id.String()+"\n")
+	if err := s.writeFile(headFile, id.String()+"\n"); err != nil {
+		return err
+	}
+	s.emit(events.Event{Kind: events.HeadSet, Subject: headFile, New: id.String(), Detail: "detached"})
+	return nil
 }
 
 // Head reads HEAD and resolves it.
