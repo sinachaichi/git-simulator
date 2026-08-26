@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -854,4 +855,144 @@ func TestXrayStaysQuietWhenACommandIsRefused(t *testing.T) {
 	out, _, code := s.run("--xray", "switch", "main")
 	assert.Equal(t, 1, code)
 	assert.NotContains(t, out, "x-ray", "a refused switch changed nothing")
+}
+
+// commitAt makes a commit with a fixed, increasing time so the log order
+// is the same for us and for real git.
+func (s *session) commitAt(unix int, file, msg string) {
+	s.t.Helper()
+	date := fmt.Sprintf("%d +0000", 1700000000+unix*60)
+	s.t.Setenv("GIT_AUTHOR_DATE", date)
+	s.t.Setenv("GIT_COMMITTER_DATE", date)
+	s.write(file, msg+"\n")
+	s.ok("add", file)
+	s.ok("commit", "-m", msg)
+}
+
+func (s *session) mergeAt(unix int, branch string) {
+	s.t.Helper()
+	date := fmt.Sprintf("%d +0000", 1700000000+unix*60)
+	s.t.Setenv("GIT_AUTHOR_DATE", date)
+	s.t.Setenv("GIT_COMMITTER_DATE", date)
+	s.ok("merge", "--no-ff", "-m", "merge "+branch, branch)
+}
+
+func trimLines(text string) []string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], " ")
+	}
+	return lines
+}
+
+func TestLogGraphShapes(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	s.commitAt(1, "a", "base")
+	s.ok("branch", "feature")
+	s.commitAt(2, "b", "main one")
+	s.ok("switch", "feature")
+	s.commitAt(3, "c", "feature one")
+	s.ok("switch", "main")
+	s.mergeAt(4, "feature")
+
+	out := s.ok("log", "--graph", "--oneline")
+	lines := trimLines(out)
+	require.Len(t, lines, 6)
+	assert.Regexp(t, `^\*   [0-9a-f]{7} \(HEAD -> main\) merge feature$`, lines[0])
+	assert.Equal(t, `|\`, lines[1])
+	assert.Regexp(t, `^\| \* [0-9a-f]{7} \(feature\) feature one$`, lines[2])
+	assert.Regexp(t, `^\* \| [0-9a-f]{7} main one$`, lines[3])
+	assert.Equal(t, `|/`, lines[4])
+	assert.Regexp(t, `^\* [0-9a-f]{7} base$`, lines[5])
+
+	assert.Equal(t, s.ok("graph"), s.ok("log", "--graph", "--oneline", "--all"))
+}
+
+// Shapes where the lanes do not cross more than once look the same as in
+// real git. Git adds an extra connector line when a lane has to move
+// across other lanes before it joins, and we do not copy that.
+func TestGraphMatchesRealGit(t *testing.T) {
+	testutil.RequireGit(t)
+	scenarios := map[string]func(s *session) []string{
+		"merge": func(s *session) []string {
+			s.commitAt(1, "a", "base")
+			s.ok("branch", "feature")
+			s.commitAt(2, "b", "main one")
+			s.ok("switch", "feature")
+			s.commitAt(3, "c", "feature one")
+			s.commitAt(4, "d", "feature two")
+			s.ok("switch", "main")
+			s.mergeAt(5, "feature")
+			s.commitAt(6, "e", "main two")
+			return nil
+		},
+		"two tips": func(s *session) []string {
+			s.commitAt(1, "a", "base")
+			s.ok("branch", "idea")
+			s.commitAt(2, "b", "main one")
+			s.ok("switch", "idea")
+			s.commitAt(3, "c", "idea one")
+			s.ok("switch", "main")
+			return []string{"--all"}
+		},
+		"two merges in a row": func(s *session) []string {
+			s.commitAt(1, "a", "base")
+			s.ok("branch", "one")
+			s.ok("branch", "two")
+			s.ok("switch", "one")
+			s.commitAt(2, "b", "one work")
+			s.ok("switch", "two")
+			s.commitAt(3, "c", "two work")
+			s.ok("switch", "main")
+			s.commitAt(4, "d", "main work")
+			s.mergeAt(5, "one")
+			s.mergeAt(6, "two")
+			return nil
+		},
+		"linear": func(s *session) []string {
+			s.commitAt(1, "a", "one")
+			s.commitAt(2, "b", "two")
+			s.commitAt(3, "c", "three")
+			return nil
+		},
+	}
+	for name, build := range scenarios {
+		s := newSession(t)
+		s.ok("init")
+		extra := build(s)
+
+		realGit := func(args ...string) []string {
+			out := testutil.Git(t, s.dir, "", append([]string{"--git-dir=" + filepath.Join(s.dir, ".hood")}, args...)...)
+			return trimLines(out)
+		}
+		got := trimLines(s.ok(append([]string{"log", "--graph", "--oneline"}, extra...)...))
+		want := realGit(append([]string{"log", "--graph", "--format=%h %s"}, extra...)...)
+		require.Len(t, got, len(want), "%s\nours:\n%s\ngit:\n%s", name, strings.Join(got, "\n"), strings.Join(want, "\n"))
+		for i := range want {
+			assert.Equal(t, graphPart(want[i]), graphPart(got[i]), "%s line %d", name, i)
+			assert.Equal(t, subjectPart(want[i]), subjectPart(got[i]), "%s line %d", name, i)
+		}
+	}
+}
+
+// graphPart returns the lane drawing at the start of a line.
+func graphPart(line string) string {
+	i := strings.IndexFunc(line, func(r rune) bool { return !strings.ContainsRune("*|/\\ _", r) })
+	if i < 0 {
+		return strings.TrimRight(line, " ")
+	}
+	return strings.TrimRight(line[:i], " ")
+}
+
+// subjectPart returns the commit subject, without id or decorations.
+func subjectPart(line string) string {
+	rest := strings.TrimLeft(line[len(graphPart(line)):], " ")
+	if rest == "" {
+		return ""
+	}
+	if i := strings.Index(rest, ") "); i >= 0 && strings.HasPrefix(rest[8:], "(") {
+		return rest[i+2:]
+	}
+	return rest[8:]
 }

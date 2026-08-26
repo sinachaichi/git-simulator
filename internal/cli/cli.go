@@ -61,6 +61,7 @@ func commandTable() []command {
 		{"checkout", "switch branches or detach HEAD at a commit", "checkout <branch|commit> | checkout -b <name> [<start>]", cmdCheckout},
 		{"show", "show a commit, tag, tree or blob", "show [<object>]", cmdShow},
 		{"tag", "list, create or delete tags", "tag [-l] | tag <name> [<commit>] | tag -a -m <message> <name> [<commit>] | tag -d <name>...", cmdTag},
+		{"graph", "draw all branches as a commit graph", "graph [-n <count>]", cmdGraph},
 		{"diff", "show changes between commits, index and working tree", "diff [--staged] [<rev> [<rev>]] [-- <path>...]", cmdDiff},
 		{"log", "show commit history", "log [--oneline] [-n <count>] [--all] [<rev>...]", cmdLog},
 		{"cat-file", "show an object", "cat-file (-t | -s | -p) <object>", cmdCatFile},
