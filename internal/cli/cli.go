@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/sinachaichi/git-simulator/internal/events"
+	"github.com/sinachaichi/git-simulator/internal/friendly"
 	"github.com/sinachaichi/git-simulator/internal/repo"
 	"github.com/sinachaichi/git-simulator/internal/term"
 	"github.com/sinachaichi/git-simulator/internal/xray"
@@ -139,6 +140,9 @@ func Run(args []string, env Env, version string) int {
 			return 2
 		}
 		fmt.Fprintf(env.Stderr, "error: %s\n", err)
+		if help, ok := friendly.For(err); ok {
+			fmt.Fprintf(env.Stderr, "  why: %s\n  try: %s\n", help.Why, help.Try)
+		}
 		return 1
 	}
 	return 0
@@ -159,9 +163,6 @@ func printHelp(w io.Writer) {
 // openRepo finds the repository that contains the current directory.
 func (c *Context) openRepo() (*repo.Repo, error) {
 	r, err := repo.Discover(c.Cwd)
-	if errors.Is(err, repo.ErrNotARepo) {
-		return nil, errors.New("not inside a hood repository. Run `hood init` first")
-	}
 	if err == nil && c.Xray {
 		r.SetObserver(&c.recorder)
 	}
