@@ -78,7 +78,8 @@ func TestCommandsOutsideARepo(t *testing.T) {
 	s := newSession(t)
 	_, errOut, code := s.run("status")
 	assert.Equal(t, 1, code)
-	assert.Contains(t, errOut, "not inside a hood repository")
+	assert.Contains(t, errOut, "not a hood repository")
+	assert.Contains(t, errOut, "  try: init\n")
 }
 
 func TestFirstCommitSession(t *testing.T) {
@@ -995,4 +996,28 @@ func subjectPart(line string) string {
 		return rest[i+2:]
 	}
 	return rest[8:]
+}
+
+func TestErrorsComeWithAWhyAndATry(t *testing.T) {
+	s := newSession(t)
+	s.ok("init")
+	_, errOut, code := s.run("commit", "-m", "x")
+	assert.Equal(t, 1, code)
+	assert.Equal(t, "error: nothing to commit\n"+
+		"  why: A commit stores what is staged, and the index is the same as HEAD.\n"+
+		"  try: status to see what changed, then add <file>\n", errOut)
+
+	_, errOut, _ = s.run("switch", "ghost")
+	assert.Contains(t, errOut, "  try: branch to list them, or switch -c <name> to create one")
+
+	// Usage errors keep their own format and get no hint.
+	_, errOut, code = s.run("add")
+	assert.Equal(t, 2, code)
+	assert.NotContains(t, errOut, "why:")
+
+	// Something nobody planned for is printed as it is.
+	s.write("a", "1\n")
+	s.ok("add", "a")
+	_, errOut, _ = s.run("rm", "nope")
+	assert.Contains(t, errOut, "  try: status to list the files")
 }
