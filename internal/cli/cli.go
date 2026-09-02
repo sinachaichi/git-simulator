@@ -25,6 +25,9 @@ type Env struct {
 	Stdout io.Writer
 	Stderr io.Writer
 	Cwd    string
+	// ChangeDir, when set, is called by commands that move the user to
+	// another directory, such as `lesson start`. The shell uses it.
+	ChangeDir func(dir string)
 }
 
 // Context is what a command handler gets.
@@ -49,6 +52,7 @@ func commandTable() []command {
 		{"init", "create an empty repository", "init [dir]", cmdInit},
 		{"add", "stage files", "add <path>...", cmdAdd},
 		{"reset", "move HEAD, or unstage files", "reset [--soft|--mixed|--hard] [<rev>] | reset [<rev>] [--] <path>...", cmdReset},
+		{"lesson", "guided exercises that check your repository", "lesson list | lesson start <name> | lesson check | lesson hint | lesson status | lesson reset", cmdLesson},
 		{"merge", "join another branch into the current one", "merge [--no-ff|--ff-only] [--no-commit] [-m <message>] <branch> | merge --abort", cmdMerge},
 		{"cherry-pick", "apply the change of an existing commit", "cherry-pick [-n] <commit> | cherry-pick --continue | cherry-pick --abort", cmdCherryPick},
 		{"revert", "make a new commit that undoes an earlier one", "revert [-n] <commit> | revert --continue | revert --abort", cmdRevert},

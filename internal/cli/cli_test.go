@@ -1021,3 +1021,96 @@ func TestErrorsComeWithAWhyAndATry(t *testing.T) {
 	_, errOut, _ = s.run("rm", "nope")
 	assert.Contains(t, errOut, "  try: status to list the files")
 }
+
+func TestLessonSession(t *testing.T) {
+	s := newSession(t)
+	t.Setenv("HOOD_HOME", filepath.Join(s.dir, "home"))
+
+	out := s.ok("lesson", "list")
+	assert.Contains(t, out, "first-commit")
+	assert.Contains(t, out, "not started")
+
+	_, errOut, code := s.run("lesson", "check")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "no lesson is active")
+
+	out = s.ok("lesson", "start", "first-commit")
+	assert.Contains(t, out, "Lesson: Your first commit")
+	assert.Contains(t, out, "Step 1 of 3: There is a new file called README.md")
+	workspace := filepath.Join(s.dir, "home", "lessons", "first-commit")
+	assert.Contains(t, out, "cd "+workspace)
+
+	out = s.ok("lesson", "check")
+	assert.Contains(t, out, "Not yet: README.md is not in the index yet.")
+	assert.Contains(t, s.ok("lesson", "hint"), "Hint: Run `status` first.")
+	assert.Contains(t, s.ok("lesson", "status"), "Step 1 of 3")
+
+	lesson := &session{t: t, dir: workspace}
+	lesson.ok("add", "README.md")
+	out = s.ok("lesson", "check")
+	assert.Contains(t, out, "ok Step 1 done.")
+	assert.Contains(t, out, "Step 2 of 3:")
+	assert.Contains(t, s.ok("lesson", "list"), "step 2 of 3")
+
+	lesson.ok("commit", "-m", "first commit")
+	lesson.write("README.md", "# changed\n")
+	lesson.ok("commit", "-am", "second")
+	out = s.ok("lesson", "check")
+	assert.Contains(t, out, "ok Step 2 done.")
+	assert.Contains(t, out, "ok Step 3 done.")
+	assert.Contains(t, out, "Well done.")
+	assert.Contains(t, s.ok("lesson", "list"), "done")
+	assert.Contains(t, s.ok("lesson", "check"), "already finished")
+	assert.Contains(t, s.ok("lesson", "hint"), "nothing left to hint at")
+
+	// Progress survives: a new run reads it from disk.
+	assert.Contains(t, s.ok("lesson", "status"), "is finished")
+	out = s.ok("lesson", "reset")
+	assert.Contains(t, out, "Step 1 of 3")
+}
+
+func TestLessonStartUsesChangeDirWhenGiven(t *testing.T) {
+	s := newSession(t)
+	t.Setenv("HOOD_HOME", filepath.Join(s.dir, "home"))
+	var moved string
+	var out, errOut bytes.Buffer
+	env := cli.Env{
+		Stdin: strings.NewReader(""), Stdout: &out, Stderr: &errOut, Cwd: s.dir,
+		ChangeDir: func(d string) { moved = d },
+	}
+	require.Equal(t, 0, cli.Run([]string{"lesson", "start", "branching"}, env, "test"), errOut.String())
+	assert.Equal(t, filepath.Join(s.dir, "home", "lessons", "branching"), moved)
+	assert.Contains(t, out.String(), "You are now in the lesson repository")
+}
+
+func TestLessonErrors(t *testing.T) {
+	s := newSession(t)
+	t.Setenv("HOOD_HOME", filepath.Join(s.dir, "home"))
+	_, _, code := s.run("lesson")
+	assert.Equal(t, 2, code)
+	_, errOut, code := s.run("lesson", "start", "nope")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, errOut, "no lesson called")
+	_, _, code = s.run("lesson", "start")
+	assert.Equal(t, 2, code)
+	_, _, code = s.run("lesson", "frobnicate")
+	assert.Equal(t, 2, code)
+	_, _, code = s.run("lesson", "check", "extra")
+	assert.Equal(t, 2, code)
+}
+
+func TestLessonsCanBeSolvedFromTheCommandLine(t *testing.T) {
+	s := newSession(t)
+	t.Setenv("HOOD_HOME", filepath.Join(s.dir, "home"))
+	s.ok("lesson", "start", "resolve-conflict")
+	ws := &session{t: t, dir: filepath.Join(s.dir, "home", "lessons", "resolve-conflict")}
+
+	_, _, code := ws.run("merge", "topic")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, s.ok("lesson", "check"), "ok Step 1 done.")
+	ws.write("story.txt", "once upon a time\nthe hero sailed home\nthe end\n")
+	ws.ok("add", "story.txt")
+	assert.Contains(t, s.ok("lesson", "check"), "ok Step 2 done.")
+	ws.ok("commit")
+	assert.Contains(t, s.ok("lesson", "check"), "Well done.")
+}
