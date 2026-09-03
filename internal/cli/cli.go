@@ -196,3 +196,21 @@ func (c *Context) repoPath(r *repo.Repo, p string) (string, error) {
 	}
 	return filepath.ToSlash(rel), nil
 }
+
+// Info describes a command for help texts and shell completion.
+type Info struct {
+	Name    string
+	Summary string
+	Usage   string
+}
+
+// Commands lists the commands, sorted by name.
+func Commands() []Info {
+	cmds := commandTable()
+	sort.Slice(cmds, func(i, j int) bool { return cmds[i].name < cmds[j].name })
+	out := make([]Info, len(cmds))
+	for i, c := range cmds {
+		out[i] = Info{Name: c.name, Summary: c.summary, Usage: c.usage}
+	}
+	return out
+}
