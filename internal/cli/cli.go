@@ -162,6 +162,7 @@ func printHelp(w io.Writer) {
 	for _, c := range cmds {
 		fmt.Fprintf(w, "  %-12s %s\n", c.name, c.summary)
 	}
+	fmt.Fprintf(w, "  %-12s %s\n", "shell", "start the interactive shell (also what plain `hood` does)")
 }
 
 // openRepo finds the repository that contains the current directory.

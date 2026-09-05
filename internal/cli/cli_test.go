@@ -1114,3 +1114,7 @@ func TestLessonsCanBeSolvedFromTheCommandLine(t *testing.T) {
 	ws.ok("commit")
 	assert.Contains(t, s.ok("lesson", "check"), "Well done.")
 }
+
+func TestHelpMentionsTheShell(t *testing.T) {
+	assert.Contains(t, newSession(t).ok("--help"), "shell")
+}
