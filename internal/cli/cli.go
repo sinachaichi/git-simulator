@@ -162,6 +162,7 @@ func printHelp(w io.Writer) {
 	for _, c := range cmds {
 		fmt.Fprintf(w, "  %-12s %s\n", c.name, c.summary)
 	}
+	fmt.Fprintf(w, "  %-12s %s\n", "shell", "start the interactive shell (also what plain `hood` does)")
 }
 
 // openRepo finds the repository that contains the current directory.
@@ -195,4 +196,22 @@ func (c *Context) repoPath(r *repo.Repo, p string) (string, error) {
 		return "", fmt.Errorf("%s is outside the repository", p)
 	}
 	return filepath.ToSlash(rel), nil
+}
+
+// Info describes a command for help texts and shell completion.
+type Info struct {
+	Name    string
+	Summary string
+	Usage   string
+}
+
+// Commands lists the commands, sorted by name.
+func Commands() []Info {
+	cmds := commandTable()
+	sort.Slice(cmds, func(i, j int) bool { return cmds[i].name < cmds[j].name })
+	out := make([]Info, len(cmds))
+	for i, c := range cmds {
+		out[i] = Info{Name: c.name, Summary: c.summary, Usage: c.usage}
+	}
+	return out
 }
