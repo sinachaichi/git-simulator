@@ -11,7 +11,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: ["1.22", stable]
+        go: [oldstable, stable]
+        include:
+          # go.mod says 1.22, so keep one job on it. Go 1.22 test binaries do
+          # not start on the current macOS runners, so it runs on linux only.
+          - os: ubuntu-latest
+            go: "1.22"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +35,7 @@ jobs:
           go-version: stable
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.1
+          version: latest
 
   coverage:
     runs-on: ubuntu-latest
