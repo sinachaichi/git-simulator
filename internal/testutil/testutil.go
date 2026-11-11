@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -50,5 +51,14 @@ func CopyDir(t testing.TB, src, dst string) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// SkipWithoutExecBit skips a test on systems that have no executable
+// file mode, such as windows.
+func SkipWithoutExecBit(t testing.TB) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("this system has no executable bit")
 	}
 }

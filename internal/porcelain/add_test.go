@@ -9,6 +9,7 @@ import (
 
 	"github.com/sinachaichi/git-simulator/internal/objects"
 	"github.com/sinachaichi/git-simulator/internal/porcelain"
+	"github.com/sinachaichi/git-simulator/internal/testutil"
 )
 
 func TestAddStagesFileAndStoresBlob(t *testing.T) {
@@ -101,6 +102,7 @@ func TestAddNeedsAPath(t *testing.T) {
 }
 
 func TestAddTracksExecutableBit(t *testing.T) {
+	testutil.SkipWithoutExecBit(t)
 	r := newRepo(t)
 	require.NoError(t, r.Work.WriteFile("run.sh", []byte("#!/bin/sh\n"), 0o755))
 	_, err := porcelain.Add(r, []string{"run.sh"})
