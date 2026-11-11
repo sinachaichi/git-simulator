@@ -10,6 +10,7 @@ import (
 	"github.com/sinachaichi/git-simulator/internal/objects"
 	"github.com/sinachaichi/git-simulator/internal/porcelain"
 	"github.com/sinachaichi/git-simulator/internal/repo"
+	"github.com/sinachaichi/git-simulator/internal/testutil"
 )
 
 func commitAll(t *testing.T, r *repo.Repo, msg string) {
@@ -118,6 +119,7 @@ func TestStatusDeletedFiles(t *testing.T) {
 }
 
 func TestStatusDetectsModeChange(t *testing.T) {
+	testutil.SkipWithoutExecBit(t)
 	r := newRepo(t)
 	write(t, r, "run.sh", "#!/bin/sh")
 	commitAll(t, r, "one")

@@ -9,6 +9,7 @@ import (
 
 	"github.com/sinachaichi/git-simulator/internal/porcelain"
 	"github.com/sinachaichi/git-simulator/internal/repo"
+	"github.com/sinachaichi/git-simulator/internal/testutil"
 )
 
 func read(t *testing.T, r *repo.Repo, path string) string {
@@ -191,6 +192,7 @@ func TestSwitchReplacesDirectoryWithFile(t *testing.T) {
 }
 
 func TestSwitchRestoresExecutableBit(t *testing.T) {
+	testutil.SkipWithoutExecBit(t)
 	r := newRepo(t)
 	require.NoError(t, r.Work.WriteFile("run.sh", []byte("#!/bin/sh\n"), 0o755))
 	commitAll(t, r, "script")
